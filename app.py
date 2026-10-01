@@ -1,6 +1,7 @@
 import os
 import time
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 from dotenv import load_dotenv
 
@@ -14,8 +15,16 @@ api_key = os.getenv("GEMINI_API_KEY")
 # Initialize Gemini Client
 client = genai.Client(api_key=api_key)
 
+# Function to speak text in browser/mobile using HTML5 Speech Synthesis
+def speak_in_browser(text):
+    clean_text = text.replace('"', '\\"').replace("'", "\\'").replace("\n", " ")
+    tts_code = f"""
+    
+    """
+    components.html(tts_code, height=0, width=0)
+
 st.title("✨ JUGNU AI Assistant")
-st.caption("Aapka personal AI saathi — 24/7 online")
+st.caption("Aapka personal AI saathi — 24/7 online & bolne wala")
 
 # Session state me messages store karna
 if "messages" not in st.session_state:
@@ -37,20 +46,20 @@ if user_input:
     with st.chat_message("user"):
         st.write(user_input)
 
-    # Gemini AI se response lena with retry
+    # Gemini AI se response lena
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         prompt = (
-            "You are JUGNU, a polite, intelligent, and helpful personal AI assistant. "
-            "Reply naturally in Hindi or Hinglish in a friendly, conversational tone. "
-            f"User message: {user_input}"
+            "You are JUGNU, a polite, intelligent, and helpful personal voice assistant. "
+            "Reply strictly in 1 to 3 short, friendly sentences in Hindi or Hinglish "
+            f"so it sounds completely natural when spoken aloud. User message: {user_input}"
         )
         
         reply = None
         max_retries = 3
         
         for attempt in range(max_retries):
-            with st.spinner(f"JUGNU soch raha hai... (Koshish {attempt + 1}/{max_retries})"):
+            with st.spinner("JUGNU soch raha hai..."):
                 try:
                     response = client.models.generate_content(
                         model="gemini-3.8-flash",
@@ -69,7 +78,8 @@ if user_input:
         if reply:
             message_placeholder.write(reply)
             st.session_state.messages.append({"role": "assistant", "content": reply})
+            speak_in_browser(reply)
         else:
-            err_msg = "Google server par abhi bohot traffic hai. Kripya 15-20 second baad dobara try karein."
+            err_msg = "Google server thoda busy hai. Kripya 10 second baad dobara poochein."
             message_placeholder.error(err_msg)
             st.session_state.messages.append({"role": "assistant", "content": err_msg})
