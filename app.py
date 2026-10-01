@@ -67,10 +67,10 @@ if voice_input is not None:
             mtype = voice_input.type if hasattr(voice_input, 'type') and voice_input.type else "audio/wav"
             try:
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.8-flash",
                     contents=[
                         types.Part.from_bytes(data=audio_data, mime_type=mtype),
-                        "You are JUGNU, a friendly Hindi personal AI voice assistant. Listen to the user audio and reply strictly in 1 or 2 short sentences in polite Hindi or Hinglish."
+                        "You are JUGNU, a polite, smart Hindi/Hinglish personal AI voice assistant. Listen to the user audio and reply strictly in 1 to 2 short sentences in polite Hindi or Hinglish."
                     ]
                 )
                 if response and response.text:
@@ -91,7 +91,7 @@ elif user_text:
     with st.spinner("JUGNU soch raha hai..."):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=(
                     "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
                     "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
