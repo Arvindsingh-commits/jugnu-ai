@@ -26,41 +26,42 @@ def play_audio(text):
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — 24/7 online, sunne aur bolne wala")
 
+# Messages list initialize
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Hello! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
-# Purane messages dikhana
+# Saari purani chat screen par dikhana
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# --- INPUT OPTIONS: Text ya Mic ---
-col1, col2 = st.columns([1, 1])
+# Text input box
+user_text = st.chat_input("Yahan type karke poochiye...")
 
-# Mic se bolne ke liye
-with col1:
-    voice_input = st.audio_input("🎙️ Bolkar poochiye:")
+# --- NEECHE KA DEDICATED MIC BOX ---
+st.write("---")
+with st.container(border=True):
+    st.markdown("#### 🎙️ JUGNU se Bolkar Baat Karein")
+    st.caption("Neeche mic button dabakar bolein, JUGNU sunkar reply karega:")
+    voice_input = st.audio_input("Record audio", label_visibility="collapsed")
 
-# Type karne ke liye
-user_text = st.chat_input("Ya yahan type karke poochiye...")
-
-# Check karein input kis taraf se aaya
+# Check karein input voice se aaya ya text se
 user_prompt = None
-is_audio_prompt = False
+is_audio = False
 
 if voice_input is not None:
-    is_audio_prompt = True
+    is_audio = True
 elif user_text:
     user_prompt = user_text
 
-if is_audio_prompt:
+if is_audio:
     with st.chat_message("user"):
         st.audio(voice_input)
-    st.session_state.messages.append({"role": "user", "content": "🎙️ [Aapki Voice Message]"})
+    st.session_state.messages.append({"role": "user", "content": "🎙️ [Voice Command]"})
 
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
@@ -71,13 +72,13 @@ if is_audio_prompt:
                     model="gemini-3.8-flash",
                     contents=[
                         types.Part.from_bytes(data=audio_bytes, mime_type=voice_input.type),
-                        "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
+                        "You are JUGNU, a polite Hindi/Hinglish personal AI voice assistant. "
                         "Listen carefully and reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish."
                     ]
                 )
                 reply = response.text.strip() if response and response.text else "Maaf kijiye, samajh nahi aaya."
-            except Exception as e:
-                reply = "Aapki aawaaz process karne me dikkat aayi. Kripya dobara bolein."
+            except Exception:
+                reply = "Aapki aawaaz sunne me dikkat aayi. Kripya dobara bolein."
 
         message_placeholder.write(reply)
         st.session_state.messages.append({"role": "assistant", "content": reply})
@@ -100,8 +101,8 @@ elif user_prompt:
                         f"User message: {user_prompt}"
                     )
                 )
-                reply = response.text.strip() if response and response.text else "Kuch dikkat aayi, kripya dobara poochein."
-            except Exception as e:
+                reply = response.text.strip() if response and response.text else "Maaf kijiye, dobara poochein."
+            except Exception:
                 reply = "Google server busy hai. Kripya dobara poochein."
 
         message_placeholder.write(reply)
