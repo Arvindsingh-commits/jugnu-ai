@@ -11,8 +11,14 @@ st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
 st.markdown("", unsafe_allow_html=True)
 
+# API Key load karein: Streamlit secrets pehle, fir env
 load_dotenv()
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = None
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+else:
+    api_key = os.getenv("GEMINI_API_KEY")
+
 client = genai.Client(api_key=api_key)
 
 def play_audio(text):
@@ -33,14 +39,14 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Hello! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
-# Saare purane messages upar dikhana
+# Screen par chat messages dikhana
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# Fixed Mic Box
+# Bottom Mic Box
 st.write("")
 with st.container(border=True):
     st.markdown("🎙️ **JUGNU se bolkar poochne ke liye neeche record karein:**")
@@ -59,23 +65,21 @@ if voice_input is not None:
         reply = None
         with st.spinner("JUGNU aapki aawaaz sun raha hai..."):
             mtype = voice_input.type if hasattr(voice_input, 'type') and voice_input.type else "audio/wav"
-            for attempt in range(3):
-                try:
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[
-                            types.Part.from_bytes(data=audio_data, mime_type=mtype),
-                            "You are JUGNU, a friendly Hindi personal AI voice assistant. Listen to the user audio and reply in 1 or 2 short sentences in polite Hindi or Hinglish."
-                        ]
-                    )
-                    if response and response.text:
-                        reply = response.text.strip()
-                        break
-                except Exception:
-                    time.sleep(1)
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=[
+                        types.Part.from_bytes(data=audio_data, mime_type=mtype),
+                        "You are JUGNU, a friendly Hindi personal AI voice assistant. Listen to the user audio and reply strictly in 1 or 2 short sentences in polite Hindi or Hinglish."
+                    ]
+                )
+                if response and response.text:
+                    reply = response.text.strip()
+            except Exception as e:
+                reply = f"Error: {str(e)}"
 
         if not reply:
-            reply = "Maaf kijiye, aawaaz saaf sunai nahi di. Kripya thoda paas aakar dobara bolein."
+            reply = "Maaf kijiye, aawaaz samajh nahi aayi. Kripya dobara bolein."
             
         st.session_state.messages.append({"role": "assistant", "content": reply})
         st.rerun()
@@ -85,24 +89,22 @@ elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     reply = None
     with st.spinner("JUGNU soch raha hai..."):
-        for attempt in range(3):
-            try:
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=(
-                        "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
-                        "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
-                        f"User question: {user_text}"
-                    )
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=(
+                    "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
+                    "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
+                    f"User question: {user_text}"
                 )
-                if response and response.text:
-                    reply = response.text.strip()
-                    break
-            except Exception:
-                time.sleep(1)
+            )
+            if response and response.text:
+                reply = response.text.strip()
+        except Exception as e:
+            reply = f"Error: {str(e)}"
 
     if not reply:
-        reply = "Kripya dobara poochiye, abhi network thoda slow hai."
+        reply = "Kripya dobara poochiye."
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
