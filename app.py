@@ -11,7 +11,7 @@ st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
 st.markdown("", unsafe_allow_html=True)
 
-# API Key load karein: Streamlit secrets pehle, fir env
+# API Key load karein
 load_dotenv()
 api_key = None
 if "GEMINI_API_KEY" in st.secrets:
@@ -30,6 +30,19 @@ def play_audio(text):
         st.audio(sound, format="audio/mp3")
     except Exception:
         pass
+
+def get_jugnu_response(contents_payload):
+    # High free quota model: gemini-2.5-flash-lite
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=contents_payload,
+        )
+        if response and response.text:
+            return response.text.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
+    return "Maaf kijiye, samajh nahi aaya."
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — 24/7 online")
@@ -62,24 +75,13 @@ if voice_input is not None:
         st.session_state.last_voice = audio_data
         st.session_state.messages.append({"role": "user", "content": "🎙️ [Aapka Voice Message]"})
         
-        reply = None
         with st.spinner("JUGNU aapki aawaaz sun raha hai..."):
             mtype = voice_input.type if hasattr(voice_input, 'type') and voice_input.type else "audio/wav"
-            try:
-                response = client.models.generate_content(
-                    model="gemini-3.8-flash",
-                    contents=[
-                        types.Part.from_bytes(data=audio_data, mime_type=mtype),
-                        "You are JUGNU, a polite, smart Hindi/Hinglish personal AI voice assistant. Listen to the user audio and reply strictly in 1 to 2 short sentences in polite Hindi or Hinglish."
-                    ]
-                )
-                if response and response.text:
-                    reply = response.text.strip()
-            except Exception as e:
-                reply = f"Error: {str(e)}"
-
-        if not reply:
-            reply = "Maaf kijiye, aawaaz samajh nahi aayi. Kripya dobara bolein."
+            prompt_content = [
+                types.Part.from_bytes(data=audio_data, mime_type=mtype),
+                "You are JUGNU, a polite, smart Hindi/Hinglish personal AI voice assistant. Listen to the user audio and reply strictly in 1 to 2 short sentences in polite Hindi or Hinglish."
+            ]
+            reply = get_jugnu_response(prompt_content)
             
         st.session_state.messages.append({"role": "assistant", "content": reply})
         st.rerun()
@@ -87,24 +89,13 @@ if voice_input is not None:
 # Handle Text Input
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
-    reply = None
     with st.spinner("JUGNU soch raha hai..."):
-        try:
-            response = client.models.generate_content(
-                model="gemini-3.8-flash",
-                contents=(
-                    "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
-                    "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
-                    f"User question: {user_text}"
-                )
-            )
-            if response and response.text:
-                reply = response.text.strip()
-        except Exception as e:
-            reply = f"Error: {str(e)}"
-
-    if not reply:
-        reply = "Kripya dobara poochiye."
+        prompt_content = (
+            "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
+            "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
+            f"User question: {user_text}"
+        )
+        reply = get_jugnu_response(prompt_content)
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
