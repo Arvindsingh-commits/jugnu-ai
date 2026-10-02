@@ -16,7 +16,7 @@ st.markdown("""
 
 """, unsafe_allow_html=True)
 
-# --- SQLite Permanent Database Setup ---
+# --- SQLite Database Setup ---
 DB_FILE = "jugnu_data.db"
 
 def init_db():
@@ -45,7 +45,6 @@ def init_db():
             note TEXT
         )
     """)
-    # Default initial users
     cursor.execute("INSERT OR IGNORE INTO users VALUES ('arvind', 'अरविंद सिंह', '1234')")
     cursor.execute("INSERT OR IGNORE INTO users VALUES ('admin', 'एडमिन', '0000')")
     conn.commit()
@@ -95,13 +94,11 @@ if not st.session_state.logged_in_user:
                 if user and user[1] == upin:
                     st.session_state.logged_in_user = uname
                     st.session_state.logged_in_name = user[0]
-                    # Load chat history from DB
                     history = db_query("SELECT role, content FROM chat_history WHERE username = ? ORDER BY id ASC", (uname,), fetchall=True)
                     if history:
                         st.session_state.messages = [{"role": r, "content": c} for r, c in history]
                     else:
                         st.session_state.messages = [{"role": "assistant", "content": f"नमस्ते {user[0]} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}]
-                    # Load notes from DB
                     notes = db_query("SELECT note FROM notes WHERE username = ?", (uname,), fetchall=True)
                     st.session_state.personal_notes = [n[0] for n in notes] if notes else []
                     st.success("लॉगिन सफल रहा!")
@@ -276,16 +273,27 @@ def get_jugnu_response(prompt_text, mode_name):
         return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है।"
 
     sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
+    
+    # Supported Groq Models: llama-3.1-70b-versatile or llama-3.1-8b-instant
     try:
         res = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-70b-versatile",
             messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
             max_tokens=150,
             temperature=0.4
         )
         return res.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Error: {str(e)}"
+    except Exception:
+        try:
+            res = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
+                max_tokens=150,
+                temperature=0.4
+            )
+            return res.choices[0].message.content.strip()
+        except Exception as e:
+            return f"Error: {str(e)}"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
@@ -330,9 +338,7 @@ user_text = st.chat_input("यहाँ लिखकर या ऊपर मा�
 st.caption("जुगनू एक AI है और इससे गलतियाँ हो सकती हैं।")
 
 def handle_user_query(query_text):
-    # 1. UI session update
     st.session_state.messages.append({"role": "user", "content": query_text})
-    # 2. Save User message to Database
     db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
              (st.session_state.logged_in_user, "user", query_text), commit=True)
     
@@ -348,9 +354,7 @@ def handle_user_query(query_text):
             term = query_text.replace("google", "").replace("par", "").strip()
             reply += f"\n\n🔍 [Google पर खोजें](https://www.google.com/search?q={term})"
 
-    # 3. UI session update
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    # 4. Save Assistant response to Database
     db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
              (st.session_state.logged_in_user, "assistant", reply), commit=True)
     st.rerun()
