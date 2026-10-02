@@ -21,11 +21,11 @@ if theme_choice == "Apni Photo Upload Karein":
     custom_bg_file = st.sidebar.file_uploader("Apni photo upload karein (JPG/PNG)", type=["jpg", "jpeg", "png"], key="bg_uploader")
 
 def apply_background(choice, uploaded_file):
-    bg_style = ""
+    bg_css = ""
     
     if choice == "Default White":
-        bg_style = """
-        [data-testid="stAppViewContainer"], .stApp, section.main, .main {
+        bg_css = """
+        [data-testid="stAppViewContainer"], .stApp, [data-testid="stMainBlockContainer"], section.main {
             background-color: #F8F9FA !important;
             background-image: none !important;
         }
@@ -37,8 +37,8 @@ def apply_background(choice, uploaded_file):
         }
         """
     elif choice == "Dark Black":
-        bg_style = """
-        [data-testid="stAppViewContainer"], .stApp, section.main, .main {
+        bg_css = """
+        [data-testid="stAppViewContainer"], .stApp, [data-testid="stMainBlockContainer"], section.main {
             background-color: #0D1117 !important;
             background-image: none !important;
         }
@@ -54,9 +54,9 @@ def apply_background(choice, uploaded_file):
             color: #F0F6FC !important;
         }
         """
-    elif choice == "Creator Photo (Arvind & Metab)":
+    elif choice == "Creator Photo (Arvind)":
         found_file = None
-        for fname in ["creator.jpg", "creator.png", "creator.jpeg"]:
+        for fname in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
             if os.path.exists(fname):
                 found_file = fname
                 break
@@ -64,12 +64,17 @@ def apply_background(choice, uploaded_file):
         if found_file:
             with open(found_file, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
-            bg_style = f"""
-            [data-testid="stAppViewContainer"], .stApp, section.main, .main {{
-                background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
+            bg_css = f"""
+            [data-testid="stAppViewContainer"], .stApp {{
+                background-image: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/png;base64,{b64}") !important;
                 background-size: cover !important;
                 background-position: center !important;
                 background-attachment: fixed !important;
+                background-repeat: no-repeat !important;
+            }}
+            section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
+                background: transparent !important;
+                background-color: transparent !important;
             }}
             h1, h2, h3, p, span, label, .stMarkdown {{
                 color: #FFFFFF !important;
@@ -83,16 +88,21 @@ def apply_background(choice, uploaded_file):
             }}
             """
         else:
-            st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili! Niche se photo upload karke ya GitHub par add karke try karein.")
+            st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili!")
             
     elif choice == "Apni Photo Upload Karein" and uploaded_file is not None:
         b64 = base64.b64encode(uploaded_file.getvalue()).decode()
-        bg_style = f"""
-        [data-testid="stAppViewContainer"], .stApp, section.main, .main {{
-            background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
+        bg_css = f"""
+        [data-testid="stAppViewContainer"], .stApp {{
+            background-image: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/png;base64,{b64}") !important;
             background-size: cover !important;
             background-position: center !important;
             background-attachment: fixed !important;
+            background-repeat: no-repeat !important;
+        }}
+        section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
+            background: transparent !important;
+            background-color: transparent !important;
         }}
         h1, h2, h3, p, span, label, .stMarkdown {{
             color: #FFFFFF !important;
