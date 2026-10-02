@@ -22,38 +22,37 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    # Hindi ke liye Groq ke sabse acche models
-    priority_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.2-11b-vision-preview",
-        "llama-3.2-3b-preview"
-    ]
+    system_instruction = (
+        "Aapka naam JUGNU hai. Aap ek smart, polite Hindi AI assistant hain. "
+        "User ke sawal ka seedha, natural Hindi ya Hinglish me 1-2 line me reply dein."
+    )
     
-    for m in priority_models:
+    # Live available models check karein
+    try:
+        model_list = [m.id for m in client.models.list().data]
+        # Text conversation models filter karein (whisper/audio chhod kar)
+        usable_models = [m for m in model_list if not any(x in m.lower() for x in ["whisper", "guard", "moderation", "vision"])]
+    except Exception as e:
+        return f"Model List Error: {str(e)}"
+
+    last_error = ""
+    for model_id in usable_models:
         try:
             completion = client.chat.completions.create(
-                model=m,
+                model=model_id,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Aapka naam JUGNU hai. Aap Rewant Singh Bhati ke personal AI assistant hain. "
-                            "Aapko sirf aur sirf aasan, saaf Hindi ya Hinglish me jawab dena hai. "
-                            "Koi doosri bhasha (jaise Arabic, French) bilkul na bolein. "
-                            "Hamesha 1 ya 2 chhote sentences me madhur aawaaz me bolne yogya reply dein."
-                        )
-                    },
+                    {"role": "system", "content": system_instruction},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=80,
-                temperature=0.6
+                max_tokens=120,
+                temperature=0.7
             )
             return completion.choices[0].message.content.strip()
-        except Exception:
+        except Exception as err:
+            last_error = str(err)
             continue
-            
-    return "Namaste! Main JUGNU hoon. Kahiye main aapki kya madad kar sakta hoon?"
+
+    return f"Groq Error: {last_error}" if last_error else "Koi active model nahi mila."
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
