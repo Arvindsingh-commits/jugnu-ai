@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import datetime
 from io import BytesIO
 import streamlit as st
@@ -9,7 +10,15 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# --- Sidebar: Settings, Modes, Speed & Export ---
+# --- Session States for Notes & Chat ---
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
+    ]
+if "personal_notes" not in st.session_state:
+    st.session_state.personal_notes = []
+
+# --- Sidebar: Settings, Modes, Notepad & Export ---
 st.sidebar.title("✨ JUGNU Settings")
 
 # 1. Personality Mode
@@ -26,8 +35,27 @@ voice_speed_option = st.sidebar.radio(
 )
 is_slow_voice = (voice_speed_option == "धीमी (Slow)")
 
-# 3. Clear Chat Button
-if st.sidebar.button("🗑️ चैट साफ़ करें", use_container_width=True):
+# 3. Personal Notepad / Reminders in Sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("📝 जुगनू डायरी (Notes)")
+new_note = st.sidebar.text_input("नया नोट / काम लिखें:", key="input_new_note", placeholder="उदा. 5 बजे बैंक जाना है")
+if st.sidebar.button("➕ नोट जोड़ें", use_container_width=True):
+    if new_note.strip():
+        st.session_state.personal_notes.append(new_note.strip())
+        st.sidebar.success("नोट सेव हो गया!")
+        st.rerun()
+
+if st.session_state.personal_notes:
+    st.sidebar.write("**आपके सेव किए गए काम:**")
+    for idx, note in enumerate(st.session_state.personal_notes):
+        st.sidebar.markdown(f"{idx+1}. {note}")
+    if st.sidebar.button("🗑️ सारे नोट साफ़ करें", use_container_width=True):
+        st.session_state.personal_notes = []
+        st.rerun()
+
+st.sidebar.markdown("---")
+# 4. Clear Chat Button
+if st.sidebar.button("🗑️ पूरी चैट साफ़ करें", use_container_width=True):
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
@@ -77,7 +105,6 @@ client = Groq(api_key=api_key)
 def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
-        # लिंक और यूआरएल आवाज़ में न पढ़ें
         clean_text = clean_text.split("http")[0].split("▶️")[0].split("🔍")[0].strip()
         if not clean_text:
             clean_text = "यहाँ आपका उत्तर है।"
@@ -88,15 +115,49 @@ def play_audio(text, autoplay=False, slow=False):
         tts.write_to_fp(sound)
         sound.seek(0)
         
-        # Native Streamlit player with autoplay support
         st.audio(sound, format="audio/mp3", autoplay=autoplay)
     except Exception as e:
         st.caption(f"Audio note: {str(e)}")
 
+# Safe Math Evaluator
+def try_evaluate_math(prompt_text):
+    text = prompt_text.lower().replace("प्रतिशत", "%").replace("percent", "%")
+    
+    # 1. Percentage check: e.g. "550 ka 18%"
+    pct_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ka|का|of)\s*(\d+(?:\.\d+)?)\s*%", text)
+    if not pct_match:
+        pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%\s*(?:of|ka|का)?\s*(\d+(?:\.\d+)?)", text)
+        if pct_match:
+            pct_val = float(pct_match.group(1))
+            num_val = float(pct_match.group(2))
+            res = (num_val * pct_val) / 100.0
+            return f"{num_val} का {pct_val}% बराबर {res:g} होगा।"
+    else:
+        num_val = float(pct_match.group(1))
+        pct_val = float(pct_match.group(2))
+        res = (num_val * pct_val) / 100.0
+        return f"{num_val} का {pct_val}% बराबर {res:g} होगा।"
+
+    # 2. Basic Arithmetic check
+    clean = text.replace("गुना", "*").replace("गुणा", "*").replace("into", "*").replace("x", "*")
+    clean = clean.replace("भाग", "/").replace("divide", "/").replace("बटा", "/")
+    clean = clean.replace("जोड़", "+").replace("plus", "+").replace("धन", "+")
+    clean = clean.replace("घटाव", "-").replace("minus", "-").replace("ऋण", "-")
+    
+    expr_match = re.search(r"(\d+(?:\.\d+)?\s*[\+\-\*\/]\s*\d+(?:\.\d+)?)", clean)
+    if expr_match:
+        try:
+            expr = expr_match.group(1)
+            ans = eval(expr, {"__builtins__": None}, {})
+            return f"हिसाब के अनुसार उत्तर {ans:g} है।"
+        except Exception:
+            pass
+    return None
+
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    # Rule 1: Creator ke bare me poora parichay
+    # Feature 1: Creator ke bare me poora parichay
     creator_keywords = [
         "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
         "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
@@ -104,11 +165,23 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in creator_keywords) and any(w in p for w in ["jisne", "jisne banaya", "banaya", "uske", "unke", "arvind", "creator", "nirmata"]):
         return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
 
-    # Rule 2: Sirf pooche ki kisne banaya
+    # Feature 2: Sirf pooche ki kisne banaya
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
-    # Rule 3: Live Time & Date Tool (IST)
+    # Feature 3: Personal Notes Reader
+    if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "mera note", "नोट बताओ"]):
+        if not st.session_state.personal_notes:
+            return "आपकी डायरी में अभी कोई नोट सेव नहीं है। आप साइडबार में नया नोट जोड़ सकते हैं।"
+        notes_str = "। ".join([f"{i+1}: {nt}" for i, nt in enumerate(st.session_state.personal_notes)])
+        return f"आपकी डायरी में ये काम लिखे हैं: {notes_str}।"
+
+    # Feature 4: Math & Calculation Engine
+    math_ans = try_evaluate_math(prompt_text)
+    if math_ans:
+        return math_ans
+
+    # Feature 5: Live Time & Date Tool (IST)
     if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
@@ -126,7 +199,7 @@ def get_jugnu_response(prompt_text, mode_name):
             return f"अभी समय {time_str} हुआ है।"
         return f"आज {day_hi} है और तारीख {date_str} है।"
 
-    # Rule 4: Weather query
+    # Feature 6: Weather query
     if any(k in p for k in ["mausam", "weather", "taapman", "tapman", "मौसम"]):
         if any(w in p for w in ["mohangarh", "mohan garh", "मोहनगढ़"]):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
@@ -177,19 +250,12 @@ def get_jugnu_response(prompt_text, mode_name):
 
     return f"Error: {last_error}" if last_error else "माफ़ कीजिए, कोई सक्रिय मॉडल नहीं मिला।"
 
-# Session State for Messages
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
-    ]
-
 # Display Message History
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
-            # नए रिस्पॉन्स पर अपने-आप आवाज़ बजेगी
             play_audio(msg["content"], autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
 # --- Export / Download Chat (Sidebar) ---
@@ -205,17 +271,27 @@ st.sidebar.download_button(
 # --- Quick Suggestion Buttons ---
 st.write("")
 st.markdown("💡 **त्वरित सवाल (Quick Tap):**")
-q_cols = st.columns(4)
+q_row1 = st.columns(4)
+q_row2 = st.columns(4)
 quick_prompt = None
 
-if q_cols[0].button("👑 निर्माता कौन है?", use_container_width=True):
+if q_row1[0].button("👑 निर्माता कौन है?", use_container_width=True):
     quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if q_cols[1].button("⏰ अभी क्या समय है?", use_container_width=True):
+if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
     quick_prompt = "Abhi kya samay hua hai?"
-if q_cols[2].button("🌤️ मोहनगढ़ का मौसम?", use_container_width=True):
+if q_row1[2].button("🌤️ मोहनगढ़ मौसम", use_container_width=True):
     quick_prompt = "Mohangarh me mausam kaisa hai?"
-if q_cols[3].button("😄 एक चुटकुला सुनाओ", use_container_width=True):
+if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
     quick_prompt = "Ek mazedaar chhota chutkula sunao"
+
+if q_row2[0].button("🎯 क्विज़ खेलें", use_container_width=True):
+    quick_prompt = "Mujhse Rajasthan ya Bharat se juda ek rochak samanya gyan ka sawal poocho jisme 4 vikalp hon."
+if q_row2[1].button("🍎 सेहत टिप", use_container_width=True):
+    quick_prompt = "Aaj ke liye ek chhota aur faydemand health tip batao."
+if q_row2[2].button("📝 मेरे नोट्स", use_container_width=True):
+    quick_prompt = "mere notes batao"
+if q_row2[3].button("📖 एक सुविचार", use_container_width=True):
+    quick_prompt = "Aaj ka achha suvichar batao"
 
 # --- Voice & Text Input ---
 with st.container(border=True):
@@ -230,7 +306,7 @@ def handle_user_query(query_text):
     with st.spinner("जुगनू सोच रहा है..."):
         reply = get_jugnu_response(query_text, bot_mode)
     
-    # Smart Link Detection (Google / YouTube Search Shortcut)
+    # Smart Link Detection
     q_low = query_text.lower()
     if "youtube" in q_low:
         search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
