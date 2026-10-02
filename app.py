@@ -12,40 +12,95 @@ st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.sidebar.title("🎨 JUGNU Theme Settings")
 theme_choice = st.sidebar.selectbox(
     "Background chunein:",
-    ["Default White", "Dark Black", "Creator Photo (Arvind & Metab)", "Apni Photo Upload Karein"]
+    ["Default White", "Dark Black", "Creator Photo (Arvind & Metab)", "Apni Photo Upload Karein"],
+    key="theme_selection"
 )
 
 custom_bg_file = None
 if theme_choice == "Apni Photo Upload Karein":
-    custom_bg_file = st.sidebar.file_uploader("Apni photo upload karein (JPG/PNG)", type=["jpg", "jpeg", "png"])
+    custom_bg_file = st.sidebar.file_uploader("Apni photo upload karein (JPG/PNG)", type=["jpg", "jpeg", "png"], key="bg_uploader")
 
 def apply_background(choice, uploaded_file):
-    css = ""
+    bg_css = ""
+    
     if choice == "Default White":
-        css = """
-        
+        bg_css = """
+        [data-testid="stAppViewContainer"], .stApp {
+            background-color: #F8F9FA !important;
+            background-image: none !important;
+            color: #111111 !important;
+        }
+        [data-testid="stHeader"] {
+            background-color: rgba(248, 249, 250, 0.8) !important;
+        }
+        .stChatMessage {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E5E7EB !important;
+            border-radius: 14px !important;
+            color: #111111 !important;
+        }
         """
     elif choice == "Dark Black":
-        css = """
-        
+        bg_css = """
+        [data-testid="stAppViewContainer"], .stApp {
+            background-color: #0E1117 !important;
+            background-image: none !important;
+            color: #FFFFFF !important;
+        }
+        [data-testid="stHeader"] {
+            background-color: rgba(14, 17, 23, 0.8) !important;
+        }
+        .stChatMessage {
+            background-color: #1E232F !important;
+            border: 1px solid #2D3748 !important;
+            border-radius: 14px !important;
+            color: #FFFFFF !important;
+        }
         """
     elif choice == "Creator Photo (Arvind & Metab)":
         if os.path.exists("creator.jpg"):
             with open("creator.jpg", "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
-            css = f"""
-            
+            bg_css = f"""
+            [data-testid="stAppViewContainer"], .stApp {{
+                background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
+                background-size: cover !important;
+                background-position: center !important;
+                background-attachment: fixed !important;
+            }}
+            [data-testid="stHeader"] {{
+                background-color: transparent !important;
+            }}
+            .stChatMessage {{
+                background-color: rgba(255, 255, 255, 0.92) !important;
+                border-radius: 14px !important;
+                color: #111111 !important;
+            }}
             """
+        else:
+            st.sidebar.warning("GitHub par 'creator.jpg' nahi mili! Kripya pehle file upload karein.")
+            
     elif choice == "Apni Photo Upload Karein" and uploaded_file is not None:
         b64 = base64.b64encode(uploaded_file.getvalue()).decode()
-        css = f"""
-        
+        bg_css = f"""
+        [data-testid="stAppViewContainer"], .stApp {{
+            background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-attachment: fixed !important;
+        }}
+        [data-testid="stHeader"] {{
+            background-color: transparent !important;
+        }}
+        .stChatMessage {{
+            background-color: rgba(255, 255, 255, 0.92) !important;
+            border-radius: 14px !important;
+            color: #111111 !important;
+        }}
         """
-    
-    if css:
-        st.markdown(css, unsafe_allow_html=True)
-    else:
-        st.markdown("", unsafe_allow_html=True)
+
+    full_style = f""
+    st.markdown(full_style, unsafe_allow_html=True)
 
 apply_background(theme_choice, custom_bg_file)
 
@@ -115,7 +170,7 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Namaste! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
-# Purane messages dikhana
+# Messages display
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -131,7 +186,7 @@ with st.container(border=True):
 # Text Input Box
 user_text = st.chat_input("Yahan likh kar poochiye...")
 
-# Voice Process
+# Handle Voice Input
 if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
@@ -157,7 +212,7 @@ if voice_input is not None:
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
-# Text Process
+# Handle Text Input
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.spinner("JUGNU soch raha hai..."):
