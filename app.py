@@ -85,99 +85,33 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
 if "app_lang" not in st.session_state:
     st.session_state.app_lang = "Hindi"
 if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = None
+    st.session_state.logged_in_user = "arvind"
 if "logged_in_name" not in st.session_state:
-    st.session_state.logged_in_name = None
+    st.session_state.logged_in_name = "अरविंद सिंह"
 if "user_plan" not in st.session_state:
-    st.session_state.user_plan = "free"
+    st.session_state.user_plan = "vip"
 if "current_session_id" not in st.session_state:
-    st.session_state.current_session_id = None
+    st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। आज आपरी कांई सेवा करूँ?"}]
 if "uploaded_doc_text" not in st.session_state:
     st.session_state.uploaded_doc_text = ""
 
-# --- 1. Login Screen ---
-if not st.session_state.logged_in_user:
-    st.title("✨ JUGNU AI Assistant")
-    selected_lang = st.radio("🌐 भाषा चुनें / Select Language:", ["हिंदी (Hindi)", "English"], horizontal=True)
-    st.session_state.app_lang = "Hindi" if "हिंदी" in selected_lang else "English"
-    is_hi = (st.session_state.app_lang == "Hindi")
-    
-    st.write("कृपया जुगनू का उपयोग करने के लिए लॉगिन करें" if is_hi else "Please log in to use JUGNU AI")
-    tab_login, tab_signup = st.tabs(["लॉगिन (Login)" if is_hi else "Login", "नया खाता (Sign Up)" if is_hi else "Sign Up"])
-    
-    with tab_login:
-        with st.form("login_form"):
-            uname = st.text_input("यूज़रनेम (Username):" if is_hi else "Username:", placeholder="उदा. arvind").strip().lower()
-            upin = st.text_input("पासवर्ड / PIN:" if is_hi else "Password / PIN:", type="password", placeholder="4 अंकों का पिन")
-            submit_login = st.form_submit_button("लॉगिन करें" if is_hi else "Login", use_container_width=True)
-            
-            if submit_login:
-                user = db_query("SELECT name, pin, plan_type FROM users WHERE username = ?", (uname,), fetchone=True)
-                if user and user[1] == upin:
-                    st.session_state.logged_in_user = uname
-                    st.session_state.logged_in_name = user[0]
-                    st.session_state.user_plan = user[2] if user[2] else "free"
-                    st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                    welcome_txt = f"राम राम {user[0]} जी! मैं जुगनू हूँ। आज आपरी कांई सेवा करूँ?" if is_hi else f"Hello {user[0]}! I am JUGNU AI. How can I help you today?"
-                    st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
-                    st.success("लॉगिन सफल रहा!" if is_hi else "Login successful!")
-                    st.rerun()
-                else:
-                    st.error("ग़लत यूज़रनेम या पासवर्ड!" if is_hi else "Invalid username or password!")
-    
-    with tab_signup:
-        with st.form("signup_form"):
-            new_name = st.text_input("आपका पूरा नाम:" if is_hi else "Full Name:", placeholder="उदा. राहुल").strip()
-            new_uname = st.text_input("नया यूज़रनेम चुनें:" if is_hi else "Choose Username:", placeholder="उदा. rahul123").strip().lower()
-            new_pin = st.text_input("नया पासवर्ड / PIN बनाएँ:" if is_hi else "Create PIN:", type="password", placeholder="उदा. 5678")
-            submit_signup = st.form_submit_button("खाता बनाएँ" if is_hi else "Create Account", use_container_width=True)
-            
-            if submit_signup:
-                if not new_name or not new_uname or not new_pin:
-                    st.warning("कृपया सभी विवरण भरें।" if is_hi else "Please fill all details.")
-                else:
-                    exists = db_query("SELECT username FROM users WHERE username = ?", (new_uname,), fetchone=True)
-                    if exists:
-                        st.error("यह यूज़रनेम पहले से मौजूद है।" if is_hi else "Username already exists.")
-                    else:
-                        today_str = datetime.date.today().isoformat()
-                        db_query("INSERT INTO users (username, name, pin, plan_type, msg_count, last_msg_date) VALUES (?, ?, ?, 'free', 0, ?)", 
-                                 (new_uname, new_name, new_pin, today_str), commit=True)
-                        st.session_state.logged_in_user = new_uname
-                        st.session_state.logged_in_name = new_name
-                        st.session_state.user_plan = "free"
-                        st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                        welcome_txt = f"राम राम {new_name} जी! आपका खाता बन गया है।" if is_hi else f"Hello {new_name}! Your account is ready."
-                        st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
-                        st.success("खाता सफलतापूर्वक बन गया!" if is_hi else "Account created successfully!")
-                        st.rerun()
-    st.stop()
-
-# --- 2. Main Dashboard ---
+# --- Sidebar Features ---
 is_hi = (st.session_state.app_lang == "Hindi")
-
 badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"
+
 st.sidebar.write(f"👤 **{st.session_state.logged_in_name}** ({badge})")
 
-if st.sidebar.button("🚪 लॉगआउट (Logout)" if is_hi else "🚪 Logout", use_container_width=True):
-    st.session_state.logged_in_user = None
-    st.session_state.logged_in_name = None
-    st.session_state.current_session_id = None
-    st.session_state.messages = []
-    st.rerun()
-
-if st.sidebar.button("➕ नई चैट (+ New Chat)" if is_hi else "➕ New Chat", use_container_width=True):
+if st.sidebar.button("➕ नई चैट (+ New Chat)", use_container_width=True):
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    welcome_text = f"राम राम {st.session_state.logged_in_name} जी! नई चैट तैयार है।" if is_hi else f"Hello {st.session_state.logged_in_name}! New chat started."
-    st.session_state.messages = [{"role": "assistant", "content": welcome_text}]
+    st.session_state.messages = [{"role": "assistant", "content": f"राम राम {st.session_state.logged_in_name} जी! नई चैट तैयार है।"}]
     st.rerun()
 
 st.sidebar.markdown("---")
 
-# File & Document Analysis (PDF / TXT)
-with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस" if is_hi else "📄 Document Analysis", expanded=False):
+# 1. File Upload / PDF Reader
+with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस", expanded=True):
     uploaded_file = st.file_uploader("PDF या TXT अपलोड करें", type=["pdf", "txt"])
     if uploaded_file is not None:
         try:
@@ -191,8 +125,8 @@ with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस" i
         except Exception as e:
             st.error(f"फ़ाइल पढ़ने में त्रुटि: {e}")
 
-# Settings & Tone
-with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़ (Persona)" if is_hi else "⚙️ Settings & Tone", expanded=False):
+# 2. Tone & Settings
+with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़ (Persona)", expanded=True):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
@@ -206,10 +140,10 @@ with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज
     voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
     is_slow_voice = (voice_speed == "धीमी")
 
-# Smart Reminders & Diary
-with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व डायरी" if is_hi else "⏰ Reminders & Notes", expanded=False):
-    r_text = st.text_input("काम लिखें:", placeholder="उदा. शाम 6 बजे मीटिंग")
-    r_time = st.time_input("समय चुनें:", value=datetime.time(18, 0))
+# 3. Smart Reminders
+with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व डायरी", expanded=False):
+    r_text = st.text_input("काम लिखें:", placeholder="उदा. 5 बजे काम है")
+    r_time = st.time_input("समय चुनें:", value=datetime.time(17, 0))
     if st.button("⏰ रिमाइंडर सेट करें", use_container_width=True):
         if r_text.strip():
             db_query("INSERT INTO notes (username, note, remind_time) VALUES (?, ?, ?)", 
@@ -226,8 +160,9 @@ with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व
             db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
             st.rerun()
 
-# Search Chat & History
-st.sidebar.subheader("🔍 चैट खोजें" if is_hi else "🔍 Search Chat")
+# 4. Search Chat & History
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔍 चैट खोजें")
 search_term = st.sidebar.text_input("ढूँढें...", placeholder="उदा. मौसम, सवाल").strip().lower()
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
 
@@ -283,8 +218,7 @@ def live_web_search(query):
     try:
         results = DDGS().text(query, max_results=3)
         if results:
-            snippet = "\n".join([r.get("body", "") for r in results])
-            return snippet
+            return "\n".join([r.get("body", "") for r in results])
     except Exception:
         pass
     return ""
@@ -323,30 +257,21 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     if search_context:
         sys_txt += f"\n\nइंटरनेट से ताज़ा सर्च जानकारी:\n{search_context}\nताज़ा जानकारी के आधार पर उत्तर दें।"
 
-    available_model_ids = []
-    try:
-        models_data = client.models.list()
-        available_model_ids = [m.id for m in models_data.data]
-    except Exception:
-        pass
-
-    preferred_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768"]
-    model_to_use = "llama-3.1-8b-instant"
-    for pm in preferred_models:
-        if pm in available_model_ids:
-            model_to_use = pm
-            break
-
-    try:
-        res = client.chat.completions.create(
-            model=model_to_use,
-            messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
-            max_tokens=150,
-            temperature=0.4
-        )
-        return res.choices[0].message.content.strip()
-    except Exception as e:
-        return f"त्रुटि: {str(e)}"
+    # Groq Official Working Text Chat Models (No TTS models)
+    target_models = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
+    for m in target_models:
+        try:
+            res = client.chat.completions.create(
+                model=m,
+                messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
+                max_tokens=150,
+                temperature=0.4
+            )
+            return res.choices[0].message.content.strip()
+        except Exception:
+            continue
+            
+    return "माफ़ी चाहता हूँ, इस समय उत्तर देने में असमर्थ हूँ।"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
@@ -362,6 +287,23 @@ for i, msg in enumerate(st.session_state.messages):
             st.write(c)
             if msg["role"] == "assistant":
                 play_audio(c, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice, lang=st.session_state.app_lang)
+
+# Suggestion Buttons
+st.write("")
+st.caption("त्वरित सुझाव:")
+r1 = st.columns(4)
+r2 = st.columns(4)
+quick_prompt = None
+
+if r1[0].button("👑 निर्माता", use_container_width=True): quick_prompt = "tum ko kisne banaya ha unke bare me batao"
+if r1[1].button("⏰ समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
+if r1[2].button("🌤 मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
+if r1[3].button("😄 चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
+
+if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
+if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
+if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
+if r2[3].button("📰 खबर", use_container_width=True): quick_prompt = "aaj ki taza khabar batao"
 
 # Mic and Chat Input
 st.write("")
@@ -394,7 +336,9 @@ def handle_user_query(query_text):
              (s_id, "assistant", reply), commit=True)
     st.rerun()
 
-if voice_input is not None:
+if quick_prompt:
+    handle_user_query(quick_prompt)
+elif voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
         st.session_state.last_voice = audio_bytes
