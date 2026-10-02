@@ -1,6 +1,7 @@
 import os
 import io
 import base64
+import datetime
 from io import BytesIO
 import streamlit as st
 from groq import Groq
@@ -9,17 +10,25 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# --- Sidebar: Controls, Modes & Clear Chat ---
+# --- Sidebar: Settings, Modes, Speed & Export ---
 st.sidebar.title("✨ JUGNU Settings")
 
-# Personality Mode
+# 1. Personality Mode
 bot_mode = st.sidebar.selectbox(
-    "JUGNU ka Andaz (Mode):",
+    "JUGNU का अंदाज़ (Mode):",
     ["दोस्ताना (Friendly)", "शिक्षक (Study / Teacher)", "कहानीकार (Storyteller)"]
 )
 
-# Clear Conversation
-if st.sidebar.button("🗑️️ Chat Saaf Karein", use_container_width=True):
+# 2. Voice Speed Control
+voice_speed_option = st.sidebar.radio(
+    "आवाज़ की गति (Voice Speed):",
+    ["सामान्य (Normal)", "धीमी (Slow)"],
+    index=0
+)
+is_slow_voice = (voice_speed_option == "धीमी (Slow)")
+
+# 3. Clear Chat Button
+if st.sidebar.button("🗑️ चैट साफ़ करें", use_container_width=True):
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
@@ -66,7 +75,7 @@ api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
 # Auto-Playing Hindi Audio Player
-def play_audio(text, autoplay=False):
+def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
         if not clean_text:
@@ -74,7 +83,7 @@ def play_audio(text, autoplay=False):
         clean_text = clean_text[:250]
         
         sound = BytesIO()
-        tts = gTTS(text=clean_text, lang="hi", slow=False)
+        tts = gTTS(text=clean_text, lang="hi", slow=slow)
         tts.write_to_fp(sound)
         sound.seek(0)
         
@@ -104,13 +113,32 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
-    # Rule 3: Weather query
+    # Rule 3: Live Time & Date Tool (IST)
+    if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din"]):
+        # IST offset: UTC + 5:30
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
+        time_str = ist_now.strftime("%I:%M %p")
+        date_str = ist_now.strftime("%d-%m-%Y")
+        
+        days_hindi = {
+            "Monday": "सोमवार", "Tuesday": "मंगलवार", "Wednesday": "बुधवार",
+            "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"
+        }
+        day_en = ist_now.strftime("%A")
+        day_hi = days_hindi.get(day_en, day_en)
+
+        if any(k in p for k in ["samay", "time", "kitne baje", "समय"]):
+            return f"अभी समय {time_str} हुआ है।"
+        return f"आज {day_hi} है और तारीख {date_str} है।"
+
+    # Rule 4: Weather query
     if any(k in p for k in ["mausam", "weather", "taapman", "tapman", "मौसम"]):
         if any(w in p for w in ["mohangarh", "mohan garh", "मोहनगढ़"]):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
-    # Mode based personality prompt
+    # Mode Instructions
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -167,8 +195,17 @@ for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
-            # Sirf sabse aakhiri naye response par auto-play hoga
-            play_audio(msg["content"], autoplay=(i == total_msgs - 1 and total_msgs > 1))
+            play_audio(msg["content"], autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
+
+# --- 4. Export / Download Chat (Sidebar) ---
+chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
+st.sidebar.download_button(
+    label="📥 बातचीत डाउनलोड करें",
+    data=chat_text,
+    file_name="jugnu_chat_history.txt",
+    mime="text/plain",
+    use_container_width=True
+)
 
 # --- Quick Suggestion Buttons ---
 st.write("")
@@ -178,12 +215,12 @@ quick_prompt = None
 
 if q_cols[0].button("👑 निर्माता कौन है?", use_container_width=True):
     quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if q_cols[1].button("🌤️ मोहनगढ़ का मौसम?", use_container_width=True):
+if q_cols[1].button("⏰ अभी क्या समय है?", use_container_width=True):
+    quick_prompt = "Abhi kya samay hua hai?"
+if q_cols[2].button("🌤️ मोहनगढ़ का मौसम?", use_container_width=True):
     quick_prompt = "Mohangarh me mausam kaisa hai?"
-if q_cols[2].button("😄 एक चुटकुला सुनाओ", use_container_width=True):
+if q_cols[3].button("😄 एक चुटकुला सुनाओ", use_container_width=True):
     quick_prompt = "Ek mazedaar chhota chutkula sunao"
-if q_cols[3].button("📖 एक सुविचार सुनाओ", use_container_width=True):
-    quick_prompt = "Aaj ka achha suvichar batao"
 
 # --- Voice & Text Input ---
 with st.container(border=True):
@@ -192,11 +229,21 @@ with st.container(border=True):
 
 user_text = st.chat_input("यहाँ लिखकर पूछिए...")
 
-# Common Trigger Function
+# Handle Query Trigger
 def handle_user_query(query_text):
     st.session_state.messages.append({"role": "user", "content": query_text})
     with st.spinner("जुगनू सोच रहा है..."):
         reply = get_jugnu_response(query_text, bot_mode)
+    
+    # Smart Link Detection (Google / YouTube Search Shortcut)
+    q_low = query_text.lower()
+    if "youtube" in q_low:
+        search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
+        reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
+    elif "google" in q_low:
+        search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
+        reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
+
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
 
