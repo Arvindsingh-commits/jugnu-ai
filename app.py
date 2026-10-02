@@ -10,35 +10,96 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# Session States
+# 1. User Database & Session State
+DEFAULT_USERS = {
+    "arvind": {"name": "अरविंद सिंह", "pin": "1234"},
+    "admin": {"name": "एडमिन", "pin": "0000"}
+}
+
+if "user_db" not in st.session_state:
+    st.session_state.user_db = DEFAULT_USERS
+
+if "logged_in_user" not in st.session_state:
+    st.session_state.logged_in_user = None
+
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}]
+    st.session_state.messages = [
+        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
+    ]
+
 if "personal_notes" not in st.session_state:
     st.session_state.personal_notes = []
 
-# Sidebar
-st.sidebar.title("✨ JUGNU Settings")
-bot_mode = st.sidebar.selectbox("JUGNU का अंदाज़:", ["दोस्ताना (Friendly)", "शिक्षक (Study / Teacher)", "कहानीकार (Storyteller)"])
-voice_speed = st.sidebar.radio("आवाज़ की गति:", ["सामान्य (Normal)", "धीमी (Slow)"])
-is_slow_voice = (voice_speed == "धीमी (Slow)")
+# 2. Login Screen
+if not st.session_state.logged_in_user:
+    st.title("✨ JUGNU AI Assistant")
+    st.write("कृपया जुगनू का उपयोग करने के लिए लॉगिन करें")
+    
+    tab_login, tab_signup = st.tabs(["लॉगिन (Login)", "नया खाता (Sign Up)"])
+    
+    with tab_login:
+        with st.form("login_form"):
+            uname = st.text_input("यूज़रनेम (Username):", placeholder="उदा. arvind").strip().lower()
+            upin = st.text_input("पासवर्ड / PIN:", type="password", placeholder="4 अंकों का पिन")
+            submit_login = st.form_submit_button("लॉगिन करें", use_container_width=True)
+            
+            if submit_login:
+                if uname in st.session_state.user_db and st.session_state.user_db[uname]["pin"] == upin:
+                    st.session_state.logged_in_user = st.session_state.user_db[uname]["name"]
+                    st.success("लॉगिन सफल रहा!")
+                    st.rerun()
+                else:
+                    st.error("ग़लत यूज़रनेम या पासवर्ड!")
+    
+    with tab_signup:
+        with st.form("signup_form"):
+            new_name = st.text_input("आपका पूरा नाम:", placeholder="उदा. अरविंद सिंह").strip()
+            new_uname = st.text_input("नया यूज़रनेम चुनें:", placeholder="उदा. arvind123").strip().lower()
+            new_pin = st.text_input("नया पासवर्ड / PIN बनाएँ:", type="password", placeholder="उदा. 5678")
+            submit_signup = st.form_submit_button("खाता बनाएँ", use_container_width=True)
+            
+            if submit_signup:
+                if not new_name or not new_uname or not new_pin:
+                    st.warning("कृपया सभी विवरण भरें।")
+                elif new_uname in st.session_state.user_db:
+                    st.error("यह यूज़रनेम पहले से मौजूद है।")
+                else:
+                    st.session_state.user_db[new_uname] = {"name": new_name, "pin": new_pin}
+                    st.session_state.logged_in_user = new_name
+                    st.success("खाता बन गया!")
+                    st.rerun()
+    
+    st.stop()
+
+# 3. Dashboard (Login ke baad)
+st.sidebar.write(f"👤 **{st.session_state.logged_in_user}**")
+if st.sidebar.button("लॉगआउट (Logout)", use_container_width=True):
+    st.session_state.logged_in_user = None
+    st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📝 जुगनू डायरी")
-new_note = st.sidebar.text_input("नया काम लिखें:", placeholder="उदा. 5 बजे बैंक जाना है")
-if st.sidebar.button("➕ नोट जोड़ें", use_container_width=True):
+st.sidebar.subheader("सेटिंग्स")
+bot_mode = st.sidebar.selectbox("अंदाज़:", ["दोस्ताना", "शिक्षक", "कहानीकार"])
+voice_speed = st.sidebar.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
+is_slow_voice = (voice_speed == "धीमी")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("डायरी (Notes)")
+new_note = st.sidebar.text_input("नया काम लिखें:", placeholder="उदा. 5 बजे काम है")
+if st.sidebar.button("नोट जोड़ें", use_container_width=True):
     if new_note.strip():
         st.session_state.personal_notes.append(new_note.strip())
-        st.sidebar.success("नोट सेव हो गया!")
+        st.sidebar.success("नोट सेव हुआ!")
         st.rerun()
 
 if st.session_state.personal_notes:
     for idx, note in enumerate(st.session_state.personal_notes):
-        st.sidebar.markdown(f"{idx+1}. {note}")
-    if st.sidebar.button("🗑 सारे नोट साफ़ करें", use_container_width=True):
+        st.sidebar.write(f"{idx+1}. {note}")
+    if st.sidebar.button("सारे नोट हटाएँ", use_container_width=True):
         st.session_state.personal_notes = []
         st.rerun()
 
-if st.sidebar.button("🗑 पूरी चैट साफ़ करें", use_container_width=True):
+if st.sidebar.button("पूरी चैट साफ़ करें", use_container_width=True):
     st.session_state.messages = [{"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}]
     st.session_state.pop("last_voice", None)
     st.rerun()
@@ -59,11 +120,11 @@ with c1:
     if creator_img:
         st.image(creator_img, width=80)
     else:
-        st.markdown("### 👑")
+        st.write("👑")
 
 with c2:
-    st.markdown("### ✨ JUGNU AI")
-    st.caption("निर्माता: **अरविंद सिंह** | पर्सनल स्मार्ट साथी")
+    st.subheader("✨ JUGNU AI")
+    st.caption("निर्माता: अरविंद सिंह | पर्सनल स्मार्ट साथी")
 
 st.divider()
 
@@ -141,7 +202,7 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in ["mausam", "weather", "मौसम"]):
         return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है।"
 
-    sys_txt = "तुम जुगनू AI हो, अरविंद सिंह द्वारा बनाए गए। शुद्ध हिंदी में 1-2 छोटे वाक्यों में उत्तर दो।"
+    sys_txt = f"तुम जुगनू AI हो, अरविंद सिंह द्वारा बनाए गए। उपयोगकर्ता का नाम {st.session_state.logged_in_user} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में उत्तर दो।"
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -153,45 +214,45 @@ def get_jugnu_response(prompt_text, mode_name):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# Chat History
+# Chat Message List
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         c = msg["content"]
         if c.startswith("IMAGE_GEN:"):
             parts = c.replace("IMAGE_GEN:", "").split("|")
-            st.markdown(f"🎨 **जुगनू ने बनाई: {parts[1]}**")
+            st.write(f"🎨 **जुगनू ने बनाई: {parts[1]}**")
             st.image(parts[0], use_container_width=True)
-            st.markdown(f"📥 [यहाँ क्लिक करके फोटो डाउनलोड करें]({parts[0]})")
+            st.markdown(f"[यहाँ क्लिक करके फोटो डाउनलोड करें]({parts[0]})")
         else:
-            st.markdown(c)
+            st.write(c)
             if msg["role"] == "assistant":
                 play_audio(c, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
-# 8 Quick Buttons
+# Quick Suggestion Buttons
 st.write("")
-st.caption("💡 **त्वरित सुझाव:**")
+st.caption("त्वरित सुझाव:")
 r1 = st.columns(4)
 r2 = st.columns(4)
 quick_prompt = None
 
-if r1[0].button("👑 निर्माता", use_container_width=True): quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if r1[1].button("⏰ समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
-if r1[2].button("🌤️️ मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
-if r1[3].button("😄 चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
+if r1[0].button("निर्माता", use_container_width=True): quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
+if r1[1].button("समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
+if r1[2].button("मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
+if r1[3].button("चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
-if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
-if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
-if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
-if r2[3].button("📝 नोट्स", use_container_width=True): quick_prompt = "mere notes batao"
+if r2[0].button("फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
+if r2[1].button("क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
+if r2[2].button("सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
+if r2[3].button("नोट्स", use_container_width=True): quick_prompt = "mere notes batao"
 
-# Centered Compact Mic
+# Mic Box
 st.write("")
 _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# Bottom Text Input & ChatGPT Disclaimer
+# Chat Input & Disclaimer
 user_text = st.chat_input("यहाँ लिखकर या ऊपर माइक से पूछिए...")
 st.caption("जुगनू एक AI है और इससे गलतियाँ हो सकती हैं।")
 
