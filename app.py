@@ -1,6 +1,5 @@
 import os
 import io
-import re
 from io import BytesIO
 import streamlit as st
 from groq import Groq
@@ -48,7 +47,7 @@ st.divider()
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
-# Clear Hindi Audio Function
+# Clear Hindi Audio
 def play_audio(text):
     try:
         clean_text = text.split("```")[0].strip()
@@ -57,7 +56,6 @@ def play_audio(text):
         clean_text = clean_text[:250]
         
         sound = BytesIO()
-        # Hindi voice pronunciation optimization
         tts = gTTS(text=clean_text, lang="hi", slow=False)
         tts.write_to_fp(sound)
         sound.seek(0)
@@ -66,22 +64,26 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    p_lower = prompt_text.lower().strip()
+    p = prompt_text.lower().strip()
 
-    # Rule 1: Kisne banaya (100% Guaranteed Exact Answer)
-    if any(k in p_lower for k in ["kisne banaya", "kisne bnaya", "kisne design kiya", "kiske dwara", "creator kaun", "creator kon", "kisne create", "किसने बनाया"]):
+    # Rule 1: Creator ke bare me poora parichay
+    creator_detail_keywords = [
+        "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
+        "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
+    ]
+    if any(k in p for k in creator_detail_keywords) and any(w in p for w in ["jisne", "jisne banaya", "banaya", "uske", "unke", "arvind", "creator", "nirmata"]):
+        return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
+
+    # Rule 2: Sirf pooche ki kisne banaya
+    if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
-    # Rule 2: Arvind Singh / Nirmata ke bare me (100% Guaranteed Exact Answer)
-    if any(k in p_lower for k in ["kahan rahte", "kahan ke", "kahan se", "bare me batao", "bare me btao", "bare mein", "batao uske", "बारे में बताओ", "कहाँ रहते"]):
-        if any(x in p_lower for x in ["arvind", "uske", "jisne", "creator", "nirmata", "arvind singh"]):
-            return "अरविंद सिंह का गाँव दूजासर है और वो अभी श्री मोहनगढ़ में रहते हैं।"
-
+    # General Chat via Groq LLM
     system_prompt = (
-        "तुम जुगनू (JUGNU) हो। "
+        "तुम जुगनू (JUGNU) हो, अरविंद सिंह द्वारा बनाए गए एक स्मार्ट और विनम्र AI सहायक। "
         "तुम्हारा उत्तर केवल और केवल शुद्ध हिंदी (Devanagari script) में होना चाहिए। "
-        "अंग्रेजी या हिंग्लिश अक्षरों का प्रयोग बिल्कुल न करें। "
-        "उत्तर 1 या 2 छोटे वाक्यों में स्वाभाविक और दोस्ताना भाषा में दो।"
+        "अंग्रेजी या हिंग्लish अक्षरों का इस्तेमाल बिल्कुल न करें। "
+        "उत्तर 1 या 2 छोटे वाक्यों में स्वाभाविक तरीके से दो।"
     )
 
     try:
