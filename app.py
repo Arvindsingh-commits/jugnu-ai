@@ -1,5 +1,6 @@
 import os
 import io
+import re
 from io import BytesIO
 import streamlit as st
 from groq import Groq
@@ -56,8 +57,8 @@ def play_audio(text):
         clean_text = clean_text[:250]
         
         sound = BytesIO()
-        # Indian accent aur clear Hindi pronunciation ke liye tld="co.in"
-        tts = gTTS(text=clean_text, lang="hi", tld="co.in", slow=False)
+        # Hindi voice pronunciation optimization
+        tts = gTTS(text=clean_text, lang="hi", slow=False)
         tts.write_to_fp(sound)
         sound.seek(0)
         st.audio(sound, format="audio/mp3")
@@ -65,12 +66,22 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
+    p_lower = prompt_text.lower().strip()
+
+    # Rule 1: Kisne banaya (100% Guaranteed Exact Answer)
+    if any(k in p_lower for k in ["kisne banaya", "kisne bnaya", "kisne design kiya", "kiske dwara", "creator kaun", "creator kon", "kisne create", "किसने बनाया"]):
+        return "मुझे अरविंद सिंह ने बनाया है।"
+
+    # Rule 2: Arvind Singh / Nirmata ke bare me (100% Guaranteed Exact Answer)
+    if any(k in p_lower for k in ["kahan rahte", "kahan ke", "kahan se", "bare me batao", "bare me btao", "bare mein", "batao uske", "बारे में बताओ", "कहाँ रहते"]):
+        if any(x in p_lower for x in ["arvind", "uske", "jisne", "creator", "nirmata", "arvind singh"]):
+            return "अरविंद सिंह का गाँव दूजासर है और वो अभी श्री मोहनगढ़ में रहते हैं।"
+
     system_prompt = (
-        "तुम जुगनू (JUGNU) हो, एक विनम्र और अत्यंत समझदार AI साथी। "
-        "नियम 1: हमेशा उत्तर शुद्ध देवनागरी हिंदी लिपि में ही लिखो ताकि आवाज़ साफ़ आए। रोमन/हिंग्लिश अक्षरों का इस्तेमाल न करो। "
-        "नियम 2: अगर कोई पूछे कि तुम्हें किसने बनाया है, तो साफ़ कहो: 'मुझे अरविंद सिंह ने बनाया है।' "
-        "नियम 3: अगर कोई पूछे कि तुम्हें जिसने बनाया है उसके बारे में बताओ या अरविंद सिंह के बारे में बताओ, तो ठीक यही कहो: 'अरविंद सिंह का गाँव दूजासर है और वो अभी श्री मोहनगढ़ में रहते हैं।' "
-        "नियम 4: उत्तर हमेशा केवल 1 या 2 छोटे वाक्यों में स्वाभाविक हिंदी में दो।"
+        "तुम जुगनू (JUGNU) हो। "
+        "तुम्हारा उत्तर केवल और केवल शुद्ध हिंदी (Devanagari script) में होना चाहिए। "
+        "अंग्रेजी या हिंग्लिश अक्षरों का प्रयोग बिल्कुल न करें। "
+        "उत्तर 1 या 2 छोटे वाक्यों में स्वाभाविक और दोस्ताना भाषा में दो।"
     )
 
     try:
@@ -92,7 +103,7 @@ def get_jugnu_response(prompt_text):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=200,
+                max_tokens=150,
                 temperature=0.3
             )
             reply = completion.choices[0].message.content.strip()
