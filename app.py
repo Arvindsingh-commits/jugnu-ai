@@ -12,7 +12,6 @@ st.markdown("", unsafe_allow_html=True)
 col1, col2 = st.columns([1, 4])
 with col1:
     creator_img = None
-    # 1. Sabhi possible spellings aur formats check karein
     check_list = [
         "creater 1.jpg", "creater 1.png", "creater 1.jpeg", "creater 1.webp",
         "creater1.jpg", "creater1.png", "creater1.jpeg",
@@ -26,7 +25,6 @@ with col1:
             creator_img = fname
             break
             
-    # 2. Agar upar na mile toh repository me koi bhi image file dhoondhein
     if not creator_img:
         for f in os.listdir("."):
             lower_f = f.lower()
@@ -41,7 +39,7 @@ with col1:
 
 with col2:
     st.markdown("### ✨ JUGNU AI Assistant")
-    st.caption("निर्माता: **अरविंद सिंह** | आपका पर्सनल स्मार्ट साथी")
+    st.caption("Nirmata: **Arvind Singh** | Aapka personal smart saathi")
 
 st.divider()
 
@@ -53,7 +51,7 @@ def play_audio(text):
     try:
         clean_text = text.split("```")[0].strip()
         if not clean_text:
-            clean_text = "यहाँ आपका उत्तर है।"
+            clean_text = "Yahan aapka uttar hai."
         clean_text = clean_text[:250]
         
         sound = BytesIO()
@@ -66,10 +64,11 @@ def play_audio(text):
 
 def get_jugnu_response(prompt_text):
     system_prompt = (
-        "तुम जुगनू (JUGNU) हो, एक विनम्र और सरल हिंदी AI सहायक। "
-        "नियम 1: अगर कोई पूछे कि तुम्हें किसने बनाया है या तुम्हारा निर्माता कौन है, तो साफ़ और गर्व से कहो: 'मुझे अरविंद सिंह ने बनाया है।' "
-        "नियम 2: हमेशा केवल स्वाभाविक और सरल हिंदी या हिंग्लिश में 1 से 2 छोटे वाक्यों में उत्तर दो। "
-        "नियम 3: अरबी या अन्य विदेशी भाषा बिल्कुल न बोलो।"
+        "Tum JUGNU ho, ek vinamra, smart aur helpful Hindi AI assistant. "
+        "CRITICAL RULE 1: Agar koi pooche ki tumhe kisne banaya hai, toh kaho: 'Mujhe Arvind Singh ne banaya hai.' "
+        "CRITICAL RULE 2: Agar koi pooche ki tumhe jisne banaya hai uske bare me batao ya Arvind Singh ke bare me batao, toh seedhe aur saaf kaho: 'Arvind Singh ka gav Doojasor ha or vo abhi Shri mohangarh me rahte ha.' "
+        "CRITICAL RULE 3: Hamesha saral Hindi ya Hinglish me 1-2 sentences me hi seedha jawab do. "
+        "CRITICAL RULE 4: Arabic ya koi anya bhasha bilkul mat bolo."
     )
 
     try:
@@ -92,7 +91,7 @@ def get_jugnu_response(prompt_text):
                     {"role": "user", "content": prompt_text}
                 ],
                 max_tokens=200,
-                temperature=0.4
+                temperature=0.3
             )
             reply = completion.choices[0].message.content.strip()
             if reply:
@@ -101,35 +100,35 @@ def get_jugnu_response(prompt_text):
             last_error = str(err)
             continue
 
-    return f"Error: {last_error}" if last_error else "माफ़ कीजिए, कोई सक्रिय मॉडल नहीं मिला।"
+    return f"Error: {last_error}" if last_error else "Maaf kijiye, koi active model nahi mila."
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
+        {"role": "assistant", "content": "Namaste! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
-# चैट संदेश दिखाना
+# Purane messages dikhana
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# माइक बॉक्स (Audio Input)
+# Voice Input Box
 st.write("")
 with st.container(border=True):
-    st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
+    st.markdown("🎙️ **JUGNU se bolkar poochne ke liye neeche record karein:**")
     voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
 
-# टेक्स्ट इनपुट
-user_text = st.chat_input("यहाँ लिखकर पूछिए...")
+# Text Input Box
+user_text = st.chat_input("Yahan likh kar poochiye...")
 
-# अगर आवाज़ से इनपुट आया हो
+# Handle Voice Input
 if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
         st.session_state.last_voice = audio_bytes
-        with st.spinner("आपकी आवाज़ सुनी जा रही है..."):
+        with st.spinner("Aapki aawaaz suni jaa rahi hai..."):
             recognized_text = ""
             try:
                 audio_file = io.BytesIO(audio_bytes)
@@ -145,15 +144,15 @@ if voice_input is not None:
 
         if recognized_text:
             st.session_state.messages.append({"role": "user", "content": f"🎙 {recognized_text}"})
-            with st.spinner("जुगनू सोच रहा है..."):
+            with st.spinner("JUGNU soch raha hai..."):
                 reply = get_jugnu_response(recognized_text)
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
-# अगर लिखकर इनपुट आया हो
+# Handle Text Input
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
-    with st.spinner("जुगनू सोच रहा है..."):
+    with st.spinner("JUGNU soch raha hai..."):
         reply = get_jugnu_response(user_text)
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
