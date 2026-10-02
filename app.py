@@ -33,11 +33,18 @@ if st.sidebar.button("💾 Save Theme", use_container_width=True):
     st.sidebar.success("Theme save ho gayi!")
     st.rerun()
 
-# --- Apply Background ---
+# --- Apply Background CSS Engine ---
 def apply_active_theme():
     cur = st.session_state.applied_theme
     
-    if cur == "Creator Photo":
+    if cur == "Dark Black":
+        st.markdown(
+            """
+            
+            """,
+            unsafe_allow_html=True
+        )
+    elif cur == "Creator Photo":
         found = None
         for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
             if os.path.exists(name):
@@ -59,14 +66,6 @@ def apply_active_theme():
         b64 = base64.b64encode(st.session_state.uploaded_bg_bytes).decode("utf-8")
         st.markdown(
             f"""
-            
-            """,
-            unsafe_allow_html=True
-        )
-
-    elif cur == "Dark Black":
-        st.markdown(
-            """
             
             """,
             unsafe_allow_html=True
