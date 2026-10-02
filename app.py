@@ -149,19 +149,32 @@ def try_evaluate_math(prompt_text):
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    image_triggers = ["photo banao", "image banao", "tasveer banao", "photo generate", "image generate", "चित्र बनाओ", "फोटो बनाओ"]
-    if any(trig in p for trig in image_triggers):
-        img_prompt = p
-        for trig in image_triggers:
-            img_prompt = img_prompt.replace(trig, "")
-        img_prompt = img_prompt.replace("ki", "").replace("ka", "").replace("ek", "").strip()
-        img_prompt = img_prompt.replace('"', '').replace("'", "")
-        if not img_prompt:
-            img_prompt = "beautiful desert rajasthan"
-        encoded = urllib.parse.quote(img_prompt)
-        image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
-        return f"IMAGE_GEN:{image_url}|{img_prompt}"
+    # Smart AI Image Generation Trigger
+    image_keywords = ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र"]
+    action_keywords = ["banao", "बनाओ", "बनाकर", "banakar", "dikhao", "दिखाओ", "generate", "create", "चाहिए"]
+    
+    has_img = any(k in p for k in image_keywords)
+    has_act = any(a in p for a in action_keywords)
 
+    if has_img and has_act:
+        # Extract main subject
+        clean_prompt = prompt_text
+        for word in [
+            "photo banao", "photo banakar do", "photo banakar", "photo chahiye",
+            "फोटो बनाकर दो", "फोटो बनाओ", "फोटो चाहिए", "तस्वीर बनाओ", "तस्वीर दिखाओ",
+            "image banao", "image generate", "चित्र बनाओ", "मुझे", "एक", "की", "का", "दो"
+        ]:
+            clean_prompt = re.sub(word, "", clean_prompt, flags=re.IGNORECASE)
+        clean_prompt = clean_prompt.strip()
+        if not clean_prompt:
+            clean_prompt = "beautiful landscape rajasthan"
+        
+        encoded = urllib.parse.quote(clean_prompt)
+        # Fast & Reliable AI image URL
+        image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
+        return f"IMAGE_GEN:{image_url}|{clean_prompt}"
+
+    # Creator Details
     creator_keywords = [
         "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
         "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
@@ -172,16 +185,19 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
+    # Notes
     if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "mera note", "नोट बताओ"]):
         if not st.session_state.personal_notes:
             return "आपकी डायरी में अभी कोई नोट सेव नहीं है। आप साइडबार में नया नोट जोड़ सकते हैं।"
         notes_str = "। ".join([f"{i+1}: {nt}" for i, nt in enumerate(st.session_state.personal_notes)])
         return f"आपकी डायरी में ये काम लिखे हैं: {notes_str}।"
 
+    # Math
     math_ans = try_evaluate_math(prompt_text)
     if math_ans:
         return math_ans
 
+    # Live Time & Date
     if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
@@ -199,11 +215,13 @@ def get_jugnu_response(prompt_text, mode_name):
             return f"अभी समय {time_str} हुआ है।"
         return f"आज {day_hi} है और तारीख {date_str} है।"
 
+    # Weather
     if any(k in p for k in ["mausam", "weather", "taapman", "tapman", "मौसम"]):
         if any(w in p for w in ["mohangarh", "mohan garh", "मोहनगढ़"]):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
+    # General Chat via Groq LLM
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -258,9 +276,10 @@ for i, msg in enumerate(st.session_state.messages):
             img_url = parts[0]
             cap = parts[1] if len(parts) > 1 else "AI Photo"
             
-            st.markdown(f"**🎨 जुगनू ने बनाई:** {cap}")
+            st.markdown(f"**🎨 जुगनू ने बनाई:** *{cap}*")
+            # Clickable visual image link
             st.markdown(f"[![{cap}]({img_url})]({img_url})")
-            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
+            st.markdown(f"📥 [यहाँ क्लिक करके बड़ी फ़ोटो डाउनलोड करें]({img_url})")
         else:
             st.markdown(content)
             if msg["role"] == "assistant":
