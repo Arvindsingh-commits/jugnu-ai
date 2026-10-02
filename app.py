@@ -8,14 +8,21 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# --- Creator Profile Banner (ऊपर आपकी फ़ोटो और नाम) ---
+# --- Creator Profile Banner (अरविंद सिंह जी की नई फोटो और नाम) ---
 col1, col2 = st.columns([1, 4])
 with col1:
     creator_img = None
-    for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
+    # creator 1 और अन्य सभी नामों की जाँच
+    possible_names = [
+        "creator 1.jpg", "creator 1.png", "creator 1.jpeg", "creator 1.JPG", "creator 1.PNG",
+        "creator1.jpg", "creator1.png", "creator1.jpeg", "creator1.JPG", "creator1.PNG",
+        "creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"
+    ]
+    for name in possible_names:
         if os.path.exists(name):
             creator_img = name
             break
+            
     if creator_img:
         st.image(creator_img, width=95)
     else:
@@ -103,10 +110,10 @@ with st.container(border=True):
     st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
     voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
 
-# टेक्स्ट इनपुट बॉक्स
+# टेक्स्ट इनपुट
 user_text = st.chat_input("यहाँ लिखकर पूछिए...")
 
-# अगर आवाज़ से इनपुट मिला हो
+# अगर आवाज़ से इनपुट आया हो
 if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
@@ -132,7 +139,7 @@ if voice_input is not None:
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
-# अगर लिखकर इनपुट मिला हो
+# अगर लिखकर इनपुट आया हो
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.spinner("जुगनू सोच रहा है..."):
