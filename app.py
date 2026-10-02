@@ -8,51 +8,47 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# --- Theme State ---
-if "applied_theme" not in st.session_state:
-    st.session_state.applied_theme = "Default White"
-if "uploaded_bg_bytes" not in st.session_state:
-    st.session_state.uploaded_bg_bytes = None
+# --- Theme State Management ---
+if "current_theme" not in st.session_state:
+    st.session_state.current_theme = "Default White"
+if "custom_photo_b64" not in st.session_state:
+    st.session_state.custom_photo_b64 = None
 
-# --- Sidebar Controls ---
+# --- Sidebar Theme Controls ---
 st.sidebar.title("🎨 JUGNU Theme Settings")
-selected_theme = st.sidebar.selectbox(
+
+theme_options = ["Default White", "Dark Black", "Creator Photo", "Apni Photo Upload Karein"]
+chosen_theme = st.sidebar.selectbox(
     "Background chunein:",
-    ["Default White", "Dark Black", "Creator Photo", "Apni Photo Upload Karein"],
-    index=["Default White", "Dark Black", "Creator Photo", "Apni Photo Upload Karein"].index(st.session_state.applied_theme)
+    theme_options,
+    index=theme_options.index(st.session_state.current_theme)
 )
 
-uploaded_file = None
-if selected_theme == "Apni Photo Upload Karein":
-    uploaded_file = st.sidebar.file_uploader("Photo chunein (JPG/PNG)", type=["jpg", "jpeg", "png"])
+new_upload = None
+if chosen_theme == "Apni Photo Upload Karein":
+    new_upload = st.sidebar.file_uploader("Photo chunein (JPG/PNG)", type=["jpg", "jpeg", "png"])
 
 if st.sidebar.button("💾 Save Theme", use_container_width=True):
-    st.session_state.applied_theme = selected_theme
-    if selected_theme == "Apni Photo Upload Karein" and uploaded_file is not None:
-        st.session_state.uploaded_bg_bytes = uploaded_file.getvalue()
-    st.sidebar.success("Theme save ho gayi!")
+    st.session_state.current_theme = chosen_theme
+    if chosen_theme == "Apni Photo Upload Karein" and new_upload is not None:
+        st.session_state.custom_photo_b64 = base64.b64encode(new_upload.getvalue()).decode("utf-8")
     st.rerun()
 
-# --- Apply Background CSS Engine ---
-def apply_active_theme():
-    cur = st.session_state.applied_theme
+# --- Universal Theme Renderer ---
+def render_active_background():
+    theme = st.session_state.current_theme
     
-    if cur == "Dark Black":
-        st.markdown(
-            """
-            
-            """,
-            unsafe_allow_html=True
-        )
-    elif cur == "Creator Photo":
-        found = None
+    # 1. Creator Photo
+    if theme == "Creator Photo":
+        found_file = None
         for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
             if os.path.exists(name):
-                found = name
+                found_file = name
                 break
-        if found:
-            with open(found, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
+        
+        if found_file:
+            with open(found_file, "rb") as f:
+                img_data = base64.b64encode(f.read()).decode("utf-8")
             st.markdown(
                 f"""
                 
@@ -60,16 +56,28 @@ def apply_active_theme():
                 unsafe_allow_html=True
             )
         else:
-            st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili!")
+            st.sidebar.warning("⚠️ GitHub पर 'creator.jpg' नहीं मिली!")
 
-    elif cur == "Apni Photo Upload Karein" and st.session_state.uploaded_bg_bytes:
-        b64 = base64.b64encode(st.session_state.uploaded_bg_bytes).decode("utf-8")
+    # 2. Uploaded Custom Photo
+    elif theme == "Apni Photo Upload Karein" and st.session_state.custom_photo_b64:
+        img_data = st.session_state.custom_photo_b64
         st.markdown(
             f"""
             
             """,
             unsafe_allow_html=True
         )
+
+    # 3. Dark Black Theme
+    elif theme == "Dark Black":
+        st.markdown(
+            """
+            
+            """,
+            unsafe_allow_html=True
+        )
+
+    # 4. Default White Theme
     else:
         st.markdown(
             """
@@ -78,7 +86,7 @@ def apply_active_theme():
             unsafe_allow_html=True
         )
 
-apply_active_theme()
+render_active_background()
 
 # --- Groq Client Setup ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -153,7 +161,7 @@ for msg in st.session_state.messages:
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# Voice Box
+# Voice Input Box
 st.write("")
 with st.container(border=True):
     st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
