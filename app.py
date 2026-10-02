@@ -22,37 +22,49 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    # Chat ke liye verified stable Groq models list
-    models_to_try = [
-        "llama3-8b-8192",
-        "llama3-70b-8192",
-        "mixtral-8x7b-32768",
-        "gemma2-9b-it"
-    ]
-    
-    last_err = ""
-    for model_name in models_to_try:
+    user_prompt = (
+        "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
+        "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
+        f"User message: {prompt_text}"
+    )
+
+    # 1. Agar working model pehle mil chuka hai toh direct call karein
+    if "working_model" in st.session_state:
         try:
             completion = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
-                            "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
-                            f"User message: {prompt_text}"
-                        )
-                    }
-                ],
+                model=st.session_state["working_model"],
+                messages=[{"role": "user", "content": user_prompt}],
                 max_tokens=100
             )
             return completion.choices[0].message.content.strip()
-        except Exception as e:
-            last_err = str(e)
+        except Exception:
+            st.session_state.pop("working_model", None)
+
+    # 2. Account ke saare active models Groq se live mangwayein
+    try:
+        all_models = [m.id for m in client.models.list().data]
+        # Audio aur Guard models ko chhodkar chat models filter karein
+        chat_candidates = [
+            mid for mid in all_models 
+            if not any(bad in mid.lower() for bad in ["whisper", "guard", "moderation"])
+        ]
+    except Exception as e:
+        return f"API Error: {str(e)}"
+
+    # 3. Jo model chal jaye, usko select karke reply le aayein
+    for mid in chat_candidates:
+        try:
+            completion = client.chat.completions.create(
+                model=mid,
+                messages=[{"role": "user", "content": user_prompt}],
+                max_tokens=100
+            )
+            st.session_state["working_model"] = mid
+            return completion.choices[0].message.content.strip()
+        except Exception:
             continue
-            
-    return f"Error: {last_err}"
+
+    return "Maaf kijiye, koi working model nahi mila. Kripya thodi der baad koshish karein."
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
