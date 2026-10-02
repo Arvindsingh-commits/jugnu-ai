@@ -1,92 +1,31 @@
 import os
 import io
-import base64
 from io import BytesIO
 import streamlit as st
 from groq import Groq
 from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
+st.markdown("", unsafe_allow_html=True)
 
-# --- Theme State Management ---
-if "current_theme" not in st.session_state:
-    st.session_state.current_theme = "Default White"
-if "custom_photo_b64" not in st.session_state:
-    st.session_state.custom_photo_b64 = None
-
-# --- Sidebar Theme Controls ---
-st.sidebar.title("🎨 JUGNU Theme Settings")
-
-theme_options = ["Default White", "Dark Black", "Creator Photo", "Apni Photo Upload Karein"]
-chosen_theme = st.sidebar.selectbox(
-    "Background chunein:",
-    theme_options,
-    index=theme_options.index(st.session_state.current_theme)
-)
-
-new_upload = None
-if chosen_theme == "Apni Photo Upload Karein":
-    new_upload = st.sidebar.file_uploader("Photo chunein (JPG/PNG)", type=["jpg", "jpeg", "png"])
-
-if st.sidebar.button("💾 Save Theme", use_container_width=True):
-    st.session_state.current_theme = chosen_theme
-    if chosen_theme == "Apni Photo Upload Karein" and new_upload is not None:
-        st.session_state.custom_photo_b64 = base64.b64encode(new_upload.getvalue()).decode("utf-8")
-    st.rerun()
-
-# --- Universal Theme Renderer ---
-def render_active_background():
-    theme = st.session_state.current_theme
-    
-    # 1. Creator Photo
-    if theme == "Creator Photo":
-        found_file = None
-        for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
-            if os.path.exists(name):
-                found_file = name
-                break
-        
-        if found_file:
-            with open(found_file, "rb") as f:
-                img_data = base64.b64encode(f.read()).decode("utf-8")
-            st.markdown(
-                f"""
-                
-                """,
-                unsafe_allow_html=True
-            )
-        else:
-            st.sidebar.warning("⚠️ GitHub पर 'creator.jpg' नहीं मिली!")
-
-    # 2. Uploaded Custom Photo
-    elif theme == "Apni Photo Upload Karein" and st.session_state.custom_photo_b64:
-        img_data = st.session_state.custom_photo_b64
-        st.markdown(
-            f"""
-            
-            """,
-            unsafe_allow_html=True
-        )
-
-    # 3. Dark Black Theme
-    elif theme == "Dark Black":
-        st.markdown(
-            """
-            
-            """,
-            unsafe_allow_html=True
-        )
-
-    # 4. Default White Theme
+# --- Creator Profile Banner (ऊपर आपकी फ़ोटो और नाम) ---
+col1, col2 = st.columns([1, 4])
+with col1:
+    creator_img = None
+    for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
+        if os.path.exists(name):
+            creator_img = name
+            break
+    if creator_img:
+        st.image(creator_img, width=95)
     else:
-        st.markdown(
-            """
-            
-            """,
-            unsafe_allow_html=True
-        )
+        st.markdown("### 👑")
 
-render_active_background()
+with col2:
+    st.markdown("### ✨ JUGNU AI Assistant")
+    st.caption("निर्माता: **अरविंद सिंह** | आपका पर्सनल स्मार्ट साथी")
+
+st.divider()
 
 # --- Groq Client Setup ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -146,31 +85,28 @@ def get_jugnu_response(prompt_text):
 
     return f"Error: {last_error}" if last_error else "माफ़ कीजिए, कोई सक्रिय मॉडल नहीं मिला।"
 
-st.title("✨ JUGNU AI Assistant")
-st.caption("Aapka personal AI saathi — Superfast & Free")
-
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
 
-# Message History
+# चैट संदेश दिखाना
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# Voice Input Box
+# माइक बॉक्स (Audio Input)
 st.write("")
 with st.container(border=True):
     st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
     voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
 
-# Text Input
+# टेक्स्ट इनपुट बॉक्स
 user_text = st.chat_input("यहाँ लिखकर पूछिए...")
 
-# Handle Voice
+# अगर आवाज़ से इनपुट मिला हो
 if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
@@ -196,7 +132,7 @@ if voice_input is not None:
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
-# Handle Text
+# अगर लिखकर इनपुट मिला हो
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.spinner("जुगनू सोच रहा है..."):
