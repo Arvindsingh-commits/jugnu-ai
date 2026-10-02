@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import urllib.parse
 import datetime
 from io import BytesIO
 import streamlit as st
@@ -101,13 +102,13 @@ st.divider()
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
-# 100% Reliable Native Streamlit Audio Player
+# 100% Reliable Native Audio Player
 def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
         clean_text = clean_text.split("http")[0].split("▶️")[0].split("🔍")[0].strip()
-        if not clean_text:
-            clean_text = "यहाँ आपका उत्तर है।"
+        if not clean_text or clean_text.startswith("IMAGE_GEN:"):
+            return
         clean_text = clean_text[:250]
         
         sound = BytesIO()
@@ -117,13 +118,11 @@ def play_audio(text, autoplay=False, slow=False):
         
         st.audio(sound, format="audio/mp3", autoplay=autoplay)
     except Exception as e:
-        st.caption(f"Audio note: {str(e)}")
+        pass
 
 # Safe Math Evaluator
 def try_evaluate_math(prompt_text):
     text = prompt_text.lower().replace("प्रतिशत", "%").replace("percent", "%")
-    
-    # 1. Percentage check: e.g. "550 ka 18%"
     pct_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ka|का|of)\s*(\d+(?:\.\d+)?)\s*%", text)
     if not pct_match:
         pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%\s*(?:of|ka|का)?\s*(\d+(?:\.\d+)?)", text)
@@ -138,7 +137,6 @@ def try_evaluate_math(prompt_text):
         res = (num_val * pct_val) / 100.0
         return f"{num_val} का {pct_val}% बराबर {res:g} होगा।"
 
-    # 2. Basic Arithmetic check
     clean = text.replace("गुना", "*").replace("गुणा", "*").replace("into", "*").replace("x", "*")
     clean = clean.replace("भाग", "/").replace("divide", "/").replace("बटा", "/")
     clean = clean.replace("जोड़", "+").replace("plus", "+").replace("धन", "+")
@@ -156,6 +154,19 @@ def try_evaluate_math(prompt_text):
 
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
+
+    # Feature: AI Image Generation Detection
+    image_triggers = ["photo banao", "image banao", "tasveer banao", "photo generate", "image generate", "चित्र बनाओ", "फोटो बनाओ"]
+    if any(trig in p for trig in image_triggers):
+        img_prompt = p
+        for trig in image_triggers:
+            img_prompt = img_prompt.replace(trig, "")
+        img_prompt = img_prompt.replace("ki", "").replace("ka", "").replace("ek", "").strip()
+        if not img_prompt:
+            img_prompt = "beautiful nature wallpaper"
+        encoded = urllib.parse.quote(img_prompt)
+        image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
+        return f"IMAGE_GEN:{image_url}|{img_prompt}"
 
     # Feature 1: Creator ke bare me poora parichay
     creator_keywords = [
@@ -176,7 +187,7 @@ def get_jugnu_response(prompt_text, mode_name):
         notes_str = "। ".join([f"{i+1}: {nt}" for i, nt in enumerate(st.session_state.personal_notes)])
         return f"आपकी डायरी में ये काम लिखे हैं: {notes_str}।"
 
-    # Feature 4: Math & Calculation Engine
+    # Feature 4: Math Engine
     math_ans = try_evaluate_math(prompt_text)
     if math_ans:
         return math_ans
@@ -254,9 +265,17 @@ def get_jugnu_response(prompt_text, mode_name):
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant":
-            play_audio(msg["content"], autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
+        content = msg["content"]
+        if content.startswith("IMAGE_GEN:"):
+            parts = content.replace("IMAGE_GEN:", "").split("|")
+            img_url = parts[0]
+            cap = parts[1] if len(parts) > 1 else "AI Generated Photo"
+            st.image(img_url, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
+            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
+        else:
+            st.markdown(content)
+            if msg["role"] == "assistant":
+                play_audio(content, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
 # --- Export / Download Chat (Sidebar) ---
 chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
@@ -279,8 +298,8 @@ if q_row1[0].button("👑 निर्माता कौन है?", use_conta
     quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
 if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
     quick_prompt = "Abhi kya samay hua hai?"
-if q_row1[2].button("🌤️ मोहनगढ़ मौसम", use_container_width=True):
-    quick_prompt = "Mohangarh me mausam kaisa hai?"
+if q_row1[2].button("🎨 फोटो बनाओ", use_container_width=True):
+    quick_prompt = "photo banao beautiful sunrise over thar desert rajasthan"
 if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
     quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
@@ -293,27 +312,31 @@ if q_row2[2].button("📝 मेरे नोट्स", use_container_width=Tru
 if q_row2[3].button("📖 एक सुविचार", use_container_width=True):
     quick_prompt = "Aaj ka achha suvichar batao"
 
-# --- Voice & Text Input ---
-with st.container(border=True):
-    st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
-    voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
+# --- FITTED COMPACT INPUT BAR (Text Box + Mic in One Single Clean Bar) ---
+st.write("")
+input_col1, input_col2 = st.columns([5, 1])
 
-user_text = st.chat_input("यहाँ लिखकर पूछिए...")
+with input_col1:
+    user_text = st.chat_input("यहाँ लिखकर पूछिए या फोटो बनाने को कहिए...")
+
+with input_col2:
+    voice_input = st.audio_input("Mic", key="jugnu_mic_fitted", label_visibility="collapsed")
 
 # Handle Query Trigger
 def handle_user_query(query_text):
     st.session_state.messages.append({"role": "user", "content": query_text})
-    with st.spinner("जुगनू सोच रहा है..."):
+    with st.spinner("जुगनू काम कर रहा है..."):
         reply = get_jugnu_response(query_text, bot_mode)
     
     # Smart Link Detection
     q_low = query_text.lower()
-    if "youtube" in q_low:
-        search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
-        reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
-    elif "google" in q_low:
-        search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
-        reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
+    if not reply.startswith("IMAGE_GEN:"):
+        if "youtube" in q_low:
+            search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
+            reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
+        elif "google" in q_low:
+            search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
+            reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
