@@ -34,7 +34,6 @@ voice_speed_option = st.sidebar.radio(
 )
 is_slow_voice = (voice_speed_option == "धीमी (Slow)")
 
-# Sidebar Diary / Notes
 st.sidebar.markdown("---")
 st.sidebar.subheader("📝 जुगनू डायरी (Notes)")
 new_note = st.sidebar.text_input("नया काम लिखें:", key="input_new_note", placeholder="उदा. 5 बजे बैंक जाना है")
@@ -99,7 +98,6 @@ st.divider()
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
-# 100% Reliable Native Audio Player
 def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
@@ -117,7 +115,6 @@ def play_audio(text, autoplay=False, slow=False):
     except Exception:
         pass
 
-# Safe Math Engine
 def try_evaluate_math(prompt_text):
     text = prompt_text.lower().replace("प्रतिशत", "%").replace("percent", "%")
     pct_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ka|का|of)\s*(\d+(?:\.\d+)?)\s*%", text)
@@ -152,7 +149,6 @@ def try_evaluate_math(prompt_text):
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    # Image Generation Check
     image_triggers = ["photo banao", "image banao", "tasveer banao", "photo generate", "image generate", "चित्र बनाओ", "फोटो बनाओ"]
     if any(trig in p for trig in image_triggers):
         img_prompt = p
@@ -166,7 +162,6 @@ def get_jugnu_response(prompt_text, mode_name):
         image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
         return f"IMAGE_GEN:{image_url}|{img_prompt}"
 
-    # Creator Details
     creator_keywords = [
         "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
         "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
@@ -177,19 +172,16 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
-    # Notes
     if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "mera note", "नोट बताओ"]):
         if not st.session_state.personal_notes:
             return "आपकी डायरी में अभी कोई नोट सेव नहीं है। आप साइडबार में नया नोट जोड़ सकते हैं।"
         notes_str = "। ".join([f"{i+1}: {nt}" for i, nt in enumerate(st.session_state.personal_notes)])
         return f"आपकी डायरी में ये काम लिखे हैं: {notes_str}।"
 
-    # Math
     math_ans = try_evaluate_math(prompt_text)
     if math_ans:
         return math_ans
 
-    # Live Time & Date
     if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
@@ -207,13 +199,11 @@ def get_jugnu_response(prompt_text, mode_name):
             return f"अभी समय {time_str} हुआ है।"
         return f"आज {day_hi} है और तारीख {date_str} है।"
 
-    # Weather
     if any(k in p for k in ["mausam", "weather", "taapman", "tapman", "मौसम"]):
         if any(w in p for w in ["mohangarh", "mohan garh", "मोहनगढ़"]):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
-    # General Chat via Groq LLM
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -268,6 +258,6 @@ for i, msg in enumerate(st.session_state.messages):
             img_url = parts[0]
             cap = parts[1] if len(parts) > 1 else "AI Photo"
             
-            # Browser direct image (Never crashes Streamlit server)
-            st.markdown(
-                f"""
+            # Clean safe HTML rendering without multi-line f-string issues
+            html_code = (
+                '
