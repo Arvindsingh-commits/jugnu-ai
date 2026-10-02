@@ -20,7 +20,7 @@ st.markdown("""
 
 """, unsafe_allow_html=True)
 
-# --- Database Setup ---
+# --- SQLite Database Setup ---
 DB_FILE = "jugnu_data.db"
 
 def init_db():
@@ -61,6 +61,14 @@ def init_db():
             remind_time TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            memory_fact TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     cursor.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('arvind', 'अरविंद सिंह', '1234', 'vip')")
     cursor.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('admin', 'Admin', '0000', 'vip')")
     conn.commit()
@@ -82,7 +90,7 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
     conn.close()
     return data
 
-# --- Persistent Login State ---
+# --- Persistent Login State Management ---
 query_user = st.query_params.get("user", None)
 if query_user and ("logged_in_user" not in st.session_state or not st.session_state.logged_in_user):
     user_row = db_query("SELECT username, name, plan_type FROM users WHERE username = ?", (query_user,), fetchone=True)
@@ -102,12 +110,13 @@ if "user_plan" not in st.session_state:
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "राम राम सा! मैं आपका सुपर जुगनू AI हूँ। आप मुझसे दुनिया की कोई भी जानकारी, फ़ोटो बनाना, फ़ाइल विश्लेषण या सामान्य सवाल बेझिझक पूछ सकते हैं।"}]
+    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
 if "uploaded_doc_text" not in st.session_state:
     st.session_state.uploaded_doc_text = ""
 if "uploaded_image_base64" not in st.session_state:
     st.session_state.uploaded_image_base64 = None
 
+# URL Query parameter me user save rakhein taaki refresh par logout na ho
 st.query_params["user"] = st.session_state.logged_in_user
 
 is_hi = (st.session_state.app_lang == "Hindi")
@@ -134,7 +143,8 @@ with col_top2:
 
 st.sidebar.markdown("---")
 
-with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़", expanded=False):
+# Settings Expander
+with st.sidebar.expander("⚙️ सेटिंग्स (Settings)", expanded=False):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
@@ -142,13 +152,30 @@ with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज
         st.rerun()
 
     bot_mode = st.selectbox(
-        "अंदाज़ (Persona):", 
-        ["ऑल-इन-वन सुपर AI (Gemini जैसा)", "मारवाड़ी / राजस्थानी (देसी)", "शिक्षक व कोडिंग गाइड", "कहानीकार व मनोरंजक"]
+        "अंदाज़ (Mode):", 
+        ["मारवाड़ी / राजस्थानी", "दोस्ताना", "शिक्षक", "कहानीकार"]
     )
     voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
     is_slow_voice = (voice_speed == "धीमी")
 
-# Chat History
+# User Memory Bank
+with st.sidebar.expander("🧠 याददाश्त (Memory)", expanded=False):
+    mem_input = st.text_input("जुगनू को क्या याद रखना है?", placeholder="उदा. मुझे चाय पसंद है")
+    if st.button("💾 सेव करें", use_container_width=True):
+        if mem_input.strip():
+            db_query("INSERT INTO user_memories (username, memory_fact) VALUES (?, ?)", 
+                     (st.session_state.logged_in_user, mem_input.strip()), commit=True)
+            st.success("याद रख लिया!")
+            st.rerun()
+    user_mems = db_query("SELECT id, memory_fact FROM user_memories WHERE username = ?", (st.session_state.logged_in_user,), fetchall=True)
+    if user_mems:
+        for mid, mtext in user_mems:
+            st.write(f"• {mtext}")
+        if st.button("🗑 याददाश्त साफ़ करें", use_container_width=True):
+            db_query("DELETE FROM user_memories WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
+            st.rerun()
+
+# Chat History Search
 st.sidebar.subheader("🔍 चैट खोजें")
 search_term = st.sidebar.text_input("ढूँढें...", placeholder="उदा. मौसम, सवाल").strip().lower()
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
@@ -165,7 +192,7 @@ if all_convos:
                 st.session_state.messages = [{"role": r, "content": c} for r, c in loaded_msgs]
             st.rerun()
 
-# --- Page Header ---
+# --- Main Page Header ---
 c1, c2 = st.columns([1, 4])
 with c1:
     creator_img = None
@@ -179,8 +206,8 @@ with c1:
         st.write("👑")
 
 with c2:
-    st.subheader("✨ JUGNU AI (सुपर AI असिस्टेंट)")
-    st.caption("निर्माता: अरविंद सिंह | दुनिया की हर जानकारी और समाधान")
+    st.subheader("✨ JUGNU AI")
+    st.caption("निर्माता: अरविंद सिंह | पर्सनल स्मार्ट साथी")
 
 st.divider()
 
@@ -195,7 +222,7 @@ def play_audio(text, autoplay=False, slow=False, lang="hi"):
             return
         sound = BytesIO()
         tts_lang = "hi" if lang == "Hindi" else "en"
-        tts = gTTS(text=clean_text[:280], lang=tts_lang, slow=slow)
+        tts = gTTS(text=clean_text[:250], lang=tts_lang, slow=slow)
         tts.write_to_fp(sound)
         sound.seek(0)
         st.audio(sound, format="audio/mp3", autoplay=autoplay)
@@ -214,14 +241,15 @@ def live_web_search(query):
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
 
-    # Instant Local Answers
+    # Direct instant answer for creator
     if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "banaya ha"]):
         return "मुझे अरविंद सिंह ने बनाया है, जिनका गाँव दूजासर है और वर्तमान में श्री मोहनगढ़ में रहते हैं।"
 
+    # Direct instant answer for marwadi check
     if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "aave", "saktee", "sakte"]):
         return "हाँ भाई, म्हूँ मीठी मारवाड़ी बोल सकूँ हूँ! हुकम करो, आज कांई बात करनी है?"
 
-    # AI Photo Generation Trigger
+    # Image gen trigger
     if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image"]) and any(a in p for a in ["banao", "बनाओ", "dikhao", "generate"]):
         query = p.replace("photo", "").replace("banao", "").replace("फोटो", "").replace("बनाओ", "").strip()
         if not query:
@@ -229,73 +257,71 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         img_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true"
         return f"IMAGE_GEN:{img_url}|{query}"
 
-    # Automatic Live Search Detection
+    # Auto live search trigger
     search_context = ""
-    if any(k in p for k in ["live", "आज का", "ताजा", "खबर", "समाचार", "news", "भाव", "मंडी", "स्कोर", "score", "weather", "मौसम", "current"]):
+    if any(k in p for k in ["live", "आज का", "ताजा", "खबर", "समाचार", "news", "भाव", "मंडी", "weather", "मौसम"]):
         search_context = live_web_search(prompt_text)
 
-    # Persona System Prompts
+    # Memories context
+    mem_records = db_query("SELECT memory_fact FROM user_memories WHERE username = ?", (st.session_state.logged_in_user,), fetchall=True)
+    memory_context = "\n".join([f"- {m[0]}" for m in mem_records]) if mem_records else ""
+
+    # Tone Setup
     if "मारवाड़ी" in mode_name or "marwadi" in p:
         sys_txt = (
-            f"थारो नाम जुगनू AI है। थानै अरविंद सिंह जी बणायो है। "
+            f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में बहुत समझदारी, सटीक और आदर सूं जवाब देणो है।"
+            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में आदर सूं स्वाभाविक जवाब देणो है।"
         )
-    elif "शिक्षक" in mode_name:
-        sys_txt = f"तुम जुगनू AI हो, एक बेहतरीन शिक्षक और कोडिंग मेंटर। उपयोगकर्ता {st.session_state.logged_in_name} को आसान शब्दों और उदाहरणों से समझाओ।"
     elif lang == "Hindi":
-        sys_txt = (
-            f"तुम जुगनू AI हो—एक शक्तिशाली सुपर AI असिस्टेंट जिसे अरविंद सिंह ने बनाया है। "
-            f"उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। तुम ज्ञान, विज्ञान, कोडिंग, गणित, इतिहास और दैनिक समस्याओं को हल करने में माहिर हो। "
-            "सटीक, मददगार और विनम्र भाषा में उत्तर दो।"
-        )
+        sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक व सटीक उत्तर दो।"
     else:
-        sys_txt = f"You are JUGNU AI, an advanced super AI assistant created by Arvind Singh. Provide accurate, intelligent and helpful answers."
+        sys_txt = f"You are JUGNU AI, created by Arvind Singh. Respond naturally in 1-2 clear English sentences."
+
+    if memory_context:
+        sys_txt += f"\n\nउपयोगकर्ता के बारे में तुम्हारी याददाश्त:\n{memory_context}"
 
     if st.session_state.uploaded_doc_text:
-        sys_txt += f"\n\n[उपयोगकर्ता द्वारा अपलोड फ़ाइल का डेटा]:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी डेटा के आधार पर दें।"
+        sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
 
     if search_context:
-        sys_txt += f"\n\n[इंटरनेट से ताज़ा लाइव सर्च डेटा]:\n{search_context}\nताज़ा जानकारी के आधार पर पूरा सटीक जवाब दें।"
+        sys_txt += f"\n\nलाइव इंटरनेट सर्च जानकारी:\n{search_context}\nताज़ा जानकारी के आधार पर उत्तर दें।"
 
-    # If an image is uploaded -> Call Vision Model
+    # Vision Check (अगर फ़ोटो अपलोड की गई हो)
     if st.session_state.uploaded_image_base64:
         try:
-            vision_res = client.chat.completions.create(
+            res_vision = client.chat.completions.create(
                 model="llama-3.2-11b-vision-preview",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": f"{sys_txt}\n\nइस फ़ोटो को देखकर उपयोगकर्ता के सवाल का विस्तृत जवाब दो: {prompt_text}"},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{st.session_state.uploaded_image_base64}"}}
-                        ]
-                    }
-                ],
-                max_tokens=250,
-                temperature=0.3
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"{sys_txt}\n\nइस फ़ोटो को देखकर जवाब दें: {prompt_text}"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{st.session_state.uploaded_image_base64}"}}
+                    ]
+                }],
+                max_tokens=200
             )
-            return vision_res.choices[0].message.content.strip()
+            return res_vision.choices[0].message.content.strip()
         except Exception:
             pass
 
-    # Text Chat Models
-    candidate_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
+    # Reliable Groq Active Models List
+    candidate_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
     for mod in candidate_models:
         try:
             res = client.chat.completions.create(
                 model=mod,
                 messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
-                max_tokens=250,
+                max_tokens=180,
                 temperature=0.4
             )
             return res.choices[0].message.content.strip()
         except Exception:
             continue
 
-    return "माफ़ी चाहता हूँ, इस समय सर्वर थोड़ा व्यस्त है। कृपया 5 सेकंड बाद दोबारा पूछें।"
+    return "माफ़ी चाहता हूँ, इस समय उत्तर देने में असमर्थ हूँ। कृपया दोबारा पूछें।"
 
-# Messages Feed
+# Chat Message Stream
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -304,7 +330,7 @@ for i, msg in enumerate(st.session_state.messages):
             parts = c.replace("IMAGE_GEN:", "").split("|")
             st.write(f"🎨 **जुगनू ने बनाई: {parts[1]}**")
             st.image(parts[0], use_container_width=True)
-            st.markdown(f"[यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({parts[0]})")
+            st.markdown(f"[यहाँ क्लिक करके फोटो डाउनलोड करें]({parts[0]})")
         else:
             st.write(c)
             if msg["role"] == "assistant":
@@ -319,12 +345,12 @@ quick_prompt = None
 
 if r1[0].button("👑 निर्माता", use_container_width=True): quick_prompt = "tum ko kisne banaya ha unke bare me batao"
 if r1[1].button("⏰ समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
-if r1[2].button("🌤 लाइव मौसम", use_container_width=True): quick_prompt = "Mohangarh me aaj ka live mausam kaisa hai?"
+if r1[2].button("🌤 मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
 if r1[3].button("😄 चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
-if r2[0].button("🎨 फ़ोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort golden light"
+if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
 if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
-if r2[2].button("📰 ताज़ा खबर", use_container_width=True): quick_prompt = "aaj ki live taja khabar batao"
+if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
 if r2[3].button("💬 मारवाड़ी", use_container_width=True): quick_prompt = "kya tum marwadi bol sakti ho"
 
 # Mic Box
@@ -354,8 +380,8 @@ with st.expander("📎 फ़ाइल या फ़ोटो जोड़ें
                 img.save(buffered, format="JPEG")
                 st.session_state.uploaded_image_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 st.session_state.uploaded_doc_text = ""
-                st.image(uploaded_file, caption=f"अटैच फ़ोटो: {uploaded_file.name}", width=220)
-                st.success("🖼 फ़ोटो लोड हो गई! अब पूछें कि 'इस फ़ोटो में क्या है?'")
+                st.image(uploaded_file, caption=f"अटैच फ़ोटो: {uploaded_file.name}", width=200)
+                st.success(f"🖼 फ़ोटो जुड़ गई! अब पूछें कि 'इस फ़ोटो में क्या है?'")
         except Exception as e:
             st.error(f"फ़ाइल लोड करने में समस्या: {e}")
 
