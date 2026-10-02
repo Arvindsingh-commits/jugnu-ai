@@ -5,6 +5,7 @@ import urllib.parse
 import datetime
 from io import BytesIO
 import streamlit as st
+import requests
 from groq import Groq
 from gtts import gTTS
 
@@ -146,33 +147,39 @@ def try_evaluate_math(prompt_text):
             pass
     return None
 
+def fetch_image_from_prompt(prompt_text):
+    clean = prompt_text.lower()
+    for w in ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र", "banao", "बनाओ", "बनाकर", "दो", "chahiye", "मुझे", "एक", "की", "का"]:
+        clean = clean.replace(w, "")
+    clean = clean.strip()
+    
+    # Prompt translation / enhancement
+    if "jaisalmer" in clean or "जैसलमेर" in clean:
+        query = "majestic golden Jaisalmer fort in the Thar desert rajasthan high quality photography"
+        caption = "जैसलमेर का किला (Jaisalmer Fort)"
+    elif "bullet" in clean or "bike" in clean:
+        query = "Royal Enfield bullet motorcycle parked near desert dunes 4k"
+        caption = "रॉयल एनफील्ड बुलेट"
+    elif "desert" in clean or "रेगिस्तान" in clean:
+        query = "beautiful Thar desert golden sand dunes rajasthan sunset"
+        caption = "थार रेगिस्तान"
+    else:
+        query = clean if clean else "beautiful palace in Rajasthan India 4k"
+        caption = clean if clean else "सुंदर राजस्थान"
+
+    encoded = urllib.parse.quote(query)
+    image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=500&nologo=true&seed=42"
+    return image_url, caption
+
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    # Smart AI Image Generation Trigger
+    # Image Generation Check
     image_keywords = ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र"]
     action_keywords = ["banao", "बनाओ", "बनाकर", "banakar", "dikhao", "दिखाओ", "generate", "create", "चाहिए"]
-    
-    has_img = any(k in p for k in image_keywords)
-    has_act = any(a in p for a in action_keywords)
-
-    if has_img and has_act:
-        # Extract main subject
-        clean_prompt = prompt_text
-        for word in [
-            "photo banao", "photo banakar do", "photo banakar", "photo chahiye",
-            "फोटो बनाकर दो", "फोटो बनाओ", "फोटो चाहिए", "तस्वीर बनाओ", "तस्वीर दिखाओ",
-            "image banao", "image generate", "चित्र बनाओ", "मुझे", "एक", "की", "का", "दो"
-        ]:
-            clean_prompt = re.sub(word, "", clean_prompt, flags=re.IGNORECASE)
-        clean_prompt = clean_prompt.strip()
-        if not clean_prompt:
-            clean_prompt = "beautiful landscape rajasthan"
-        
-        encoded = urllib.parse.quote(clean_prompt)
-        # Fast & Reliable AI image URL
-        image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
-        return f"IMAGE_GEN:{image_url}|{clean_prompt}"
+    if any(k in p for k in image_keywords) and any(a in p for a in action_keywords):
+        img_url, cap = fetch_image_from_prompt(prompt_text)
+        return f"IMAGE_GEN:{img_url}|{cap}"
 
     # Creator Details
     creator_keywords = [
@@ -221,7 +228,7 @@ def get_jugnu_response(prompt_text, mode_name):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
-    # General Chat via Groq LLM
+    # LLM Chat
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -276,10 +283,15 @@ for i, msg in enumerate(st.session_state.messages):
             img_url = parts[0]
             cap = parts[1] if len(parts) > 1 else "AI Photo"
             
-            st.markdown(f"**🎨 जुगनू ने बनाई:** *{cap}*")
-            # Clickable visual image link
-            st.markdown(f"[![{cap}]({img_url})]({img_url})")
-            st.markdown(f"📥 [यहाँ क्लिक करके बड़ी फ़ोटो डाउनलोड करें]({img_url})")
+            # Fetch directly from backend so it loads immediately on screen
+            try:
+                img_data = requests.get(img_url, timeout=15).content
+                st.image(img_data, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
+            except Exception:
+                st.markdown(f"🎨 **{cap}**")
+                st.markdown(f"[![फोटो लोड हो रही है]({img_url})]({img_url})")
+
+            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
         else:
             st.markdown(content)
             if msg["role"] == "assistant":
@@ -307,7 +319,7 @@ if q_row1[0].button("👑 निर्माता कौन है?", use_conta
 if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
     quick_prompt = "Abhi kya samay hua hai?"
 if q_row1[2].button("🎨 फोटो बनाओ", use_container_width=True):
-    quick_prompt = "photo banao beautiful thar desert sunrise"
+    quick_prompt = "photo banao Jaisalmer Fort"
 if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
     quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
@@ -335,7 +347,7 @@ def handle_user_query(query_text):
     if not reply.startswith("IMAGE_GEN:"):
         if "youtube" in q_low:
             search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
-            reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
+            reply += f"\n\n▶️️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
         elif "google" in q_low:
             search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
             reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
