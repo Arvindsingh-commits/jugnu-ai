@@ -211,7 +211,7 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         sys_txt = (
             f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोल सकूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
+            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोलूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
         )
     elif lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
@@ -221,7 +221,9 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     if st.session_state.uploaded_doc_text:
         sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
 
-    candidate_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    # Safe model query loop
+    candidate_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    last_err = ""
     for mod in candidate_models:
         try:
             res = client.chat.completions.create(
@@ -231,10 +233,11 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
                 temperature=0.4
             )
             return res.choices[0].message.content.strip()
-        except Exception:
+        except Exception as e:
+            last_err = str(e)
             continue
 
-    return "माफ़ी चाहता हूँ, इस समय उत्तर देने में असमर्थ हूँ।"
+    return f"त्रुटि: {last_err}"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
@@ -274,7 +277,7 @@ _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# Clean File / Photo Attachment Box (ChatGPT Style text removed)
+# Clean File / Photo Attachment Box
 with st.expander("📎 फ़ाइल या फ़ोटो जोड़ें", expanded=False):
     uploaded_file = st.file_uploader("PDF, TXT या फ़ोटो चुनें:", type=["pdf", "txt", "png", "jpg", "jpeg"], key="main_chat_uploader")
     if uploaded_file is not None:
