@@ -8,6 +8,8 @@ from io import BytesIO
 import streamlit as st
 from groq import Groq
 from gtts import gTTS
+from pypdf import PdfReader
+from duckduckgo_search import DDGS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
@@ -18,6 +20,7 @@ st.markdown("""
 
 # --- SQLite Database ---
 DB_FILE = "jugnu_data.db"
+DAILY_FREE_LIMIT = 15
 
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -26,7 +29,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
             name TEXT,
-            pin TEXT
+            pin TEXT,
+            plan_type TEXT DEFAULT 'free',
+            msg_count INTEGER DEFAULT 0,
+            last_msg_date TEXT
         )
     """)
     cursor.execute("""
@@ -50,11 +56,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT,
-            note TEXT
+            note TEXT,
+            remind_time TEXT
         )
     """)
-    cursor.execute("INSERT OR IGNORE INTO users VALUES ('arvind', 'अरविंद सिंह', '1234')")
-    cursor.execute("INSERT OR IGNORE INTO users VALUES ('admin', 'Admin', '0000')")
+    cursor.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('arvind', 'अरविंद सिंह', '1234', 'vip')")
+    cursor.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('admin', 'Admin', '0000', 'vip')")
     conn.commit()
     conn.close()
 
@@ -81,17 +88,18 @@ if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 if "logged_in_name" not in st.session_state:
     st.session_state.logged_in_name = None
+if "user_plan" not in st.session_state:
+    st.session_state.user_plan = "free"
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "personal_notes" not in st.session_state:
-    st.session_state.personal_notes = []
+if "uploaded_doc_text" not in st.session_state:
+    st.session_state.uploaded_doc_text = ""
 
 # --- 1. Login Screen ---
 if not st.session_state.logged_in_user:
     st.title("✨ JUGNU AI Assistant")
-    
     selected_lang = st.radio("🌐 भाषा चुनें / Select Language:", ["हिंदी (Hindi)", "English"], horizontal=True)
     st.session_state.app_lang = "Hindi" if "हिंदी" in selected_lang else "English"
     is_hi = (st.session_state.app_lang == "Hindi")
@@ -106,16 +114,14 @@ if not st.session_state.logged_in_user:
             submit_login = st.form_submit_button("लॉगिन करें" if is_hi else "Login", use_container_width=True)
             
             if submit_login:
-                user = db_query("SELECT name, pin FROM users WHERE username = ?", (uname,), fetchone=True)
+                user = db_query("SELECT name, pin, plan_type FROM users WHERE username = ?", (uname,), fetchone=True)
                 if user and user[1] == upin:
                     st.session_state.logged_in_user = uname
                     st.session_state.logged_in_name = user[0]
+                    st.session_state.user_plan = user[2] if user[2] else "free"
                     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                    welcome_txt = f"नमस्ते {user[0]} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?" if is_hi else f"Hello {user[0]}! I am JUGNU AI. How can I help you today?"
+                    welcome_txt = f"राम राम {user[0]} जी! मैं जुगनू हूँ। आज आपरी कांई सेवा करूँ?" if is_hi else f"Hello {user[0]}! I am JUGNU AI. How can I help you today?"
                     st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
-                    
-                    notes = db_query("SELECT note FROM notes WHERE username = ?", (uname,), fetchall=True)
-                    st.session_state.personal_notes = [n[0] for n in notes] if notes else []
                     st.success("लॉगिन सफल रहा!" if is_hi else "Login successful!")
                     st.rerun()
                 else:
@@ -123,8 +129,8 @@ if not st.session_state.logged_in_user:
     
     with tab_signup:
         with st.form("signup_form"):
-            new_name = st.text_input("आपका पूरा नाम:" if is_hi else "Full Name:", placeholder="उदा. अरविंद सिंह").strip()
-            new_uname = st.text_input("नया यूज़रनेम चुनें:" if is_hi else "Choose Username:", placeholder="उदा. arvind123").strip().lower()
+            new_name = st.text_input("आपका पूरा नाम:" if is_hi else "Full Name:", placeholder="उदा. राहुल").strip()
+            new_uname = st.text_input("नया यूज़रनेम चुनें:" if is_hi else "Choose Username:", placeholder="उदा. rahul123").strip().lower()
             new_pin = st.text_input("नया पासवर्ड / PIN बनाएँ:" if is_hi else "Create PIN:", type="password", placeholder="उदा. 5678")
             submit_signup = st.form_submit_button("खाता बनाएँ" if is_hi else "Create Account", use_container_width=True)
             
@@ -136,13 +142,15 @@ if not st.session_state.logged_in_user:
                     if exists:
                         st.error("यह यूज़रनेम पहले से मौजूद है।" if is_hi else "Username already exists.")
                     else:
-                        db_query("INSERT INTO users VALUES (?, ?, ?)", (new_uname, new_name, new_pin), commit=True)
+                        today_str = datetime.date.today().isoformat()
+                        db_query("INSERT INTO users (username, name, pin, plan_type, msg_count, last_msg_date) VALUES (?, ?, ?, 'free', 0, ?)", 
+                                 (new_uname, new_name, new_pin, today_str), commit=True)
                         st.session_state.logged_in_user = new_uname
                         st.session_state.logged_in_name = new_name
+                        st.session_state.user_plan = "free"
                         st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                        welcome_txt = f"नमस्ते {new_name} जी! आपका खाता बन गया है। कहिए क्या मदद करूँ?" if is_hi else f"Hello {new_name}! Your account is ready. How can I assist you?"
+                        welcome_txt = f"राम राम {new_name} जी! आपका खाता बन गया है।" if is_hi else f"Hello {new_name}! Your account is ready."
                         st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
-                        st.session_state.personal_notes = []
                         st.success("खाता सफलतापूर्वक बन गया!" if is_hi else "Account created successfully!")
                         st.rerun()
     st.stop()
@@ -150,8 +158,9 @@ if not st.session_state.logged_in_user:
 # --- 2. Main Dashboard ---
 is_hi = (st.session_state.app_lang == "Hindi")
 
-# Sidebar Header & User Profile
-st.sidebar.write(f"👤 **{st.session_state.logged_in_name}**")
+badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"
+st.sidebar.write(f"👤 **{st.session_state.logged_in_name}** ({badge})")
+
 if st.sidebar.button("🚪 लॉगआउट (Logout)" if is_hi else "🚪 Logout", use_container_width=True):
     st.session_state.logged_in_user = None
     st.session_state.logged_in_name = None
@@ -159,17 +168,31 @@ if st.sidebar.button("🚪 लॉगआउट (Logout)" if is_hi else "🚪 Logo
     st.session_state.messages = []
     st.rerun()
 
-# Button for New Page / New Chat
 if st.sidebar.button("➕ नई चैट (+ New Chat)" if is_hi else "➕ New Chat", use_container_width=True):
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    welcome_text = f"नमस्ते {st.session_state.logged_in_name} जी! नया पेज तैयार है। कहिए क्या मदद करूँ?" if is_hi else f"Hello {st.session_state.logged_in_name}! New chat started. How can I assist?"
+    welcome_text = f"राम राम {st.session_state.logged_in_name} जी! नई चैट तैयार है।" if is_hi else f"Hello {st.session_state.logged_in_name}! New chat started."
     st.session_state.messages = [{"role": "assistant", "content": welcome_text}]
     st.rerun()
 
 st.sidebar.markdown("---")
 
-# Settings in Sidebar
-with st.sidebar.expander("⚙️ सेटिंग्स (Settings)" if is_hi else "⚙️ Settings", expanded=False):
+# File & Document Analysis (PDF / TXT)
+with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस" if is_hi else "📄 Document Analysis", expanded=False):
+    uploaded_file = st.file_uploader("PDF या TXT अपलोड करें", type=["pdf", "txt"])
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith(".pdf"):
+                reader = PdfReader(uploaded_file)
+                text = "\n".join([page.extract_text() or "" for page in reader.pages])
+            else:
+                text = uploaded_file.read().decode("utf-8")
+            st.session_state.uploaded_doc_text = text[:4000]
+            st.success("फ़ाइल लोड हो गई! अब इससे जुड़े सवाल पूछें।")
+        except Exception as e:
+            st.error(f"फ़ाइल पढ़ने में त्रुटि: {e}")
+
+# Settings & Tone
+with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़ (Persona)" if is_hi else "⚙️ Settings & Tone", expanded=False):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
@@ -177,18 +200,35 @@ with st.sidebar.expander("⚙️ सेटिंग्स (Settings)" if is_hi e
         st.rerun()
 
     bot_mode = st.selectbox(
-        "अंदाज़ (Mode):" if is_hi else "Mode:", 
-        ["दोस्ताना", "शिक्षक", "कहानीकार"] if is_hi else ["Friendly", "Teacher", "Storyteller"]
+        "अंदाज़ (Persona):", 
+        ["मारवाड़ी / राजस्थानी (देसी)", "दोस्ताना (Friendly)", "शिक्षक (Teacher)", "कहानीकार (Storyteller)"]
     )
-    voice_speed = st.radio("आवाज़ की गति:" if is_hi else "Voice Speed:", ["सामान्य", "धीमी"] if is_hi else ["Normal", "Slow"])
-    is_slow_voice = (voice_speed in ["धीमी", "Slow"])
+    voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
+    is_slow_voice = (voice_speed == "धीमी")
 
-# Search Chat & History in Sidebar
-st.sidebar.subheader("🔍 चैट खोजें (Search Chat)" if is_hi else "🔍 Search Chat")
-search_term = st.sidebar.text_input("ढूँढें..." if is_hi else "Search chats...", placeholder="उदा. मौसम, सवाल" if is_hi else "Search keyword").strip().lower()
+# Smart Reminders & Diary
+with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व डायरी" if is_hi else "⏰ Reminders & Notes", expanded=False):
+    r_text = st.text_input("काम लिखें:", placeholder="उदा. शाम 6 बजे मीटिंग")
+    r_time = st.time_input("समय चुनें:", value=datetime.time(18, 0))
+    if st.button("⏰ रिमाइंडर सेट करें", use_container_width=True):
+        if r_text.strip():
+            db_query("INSERT INTO notes (username, note, remind_time) VALUES (?, ?, ?)", 
+                     (st.session_state.logged_in_user, r_text.strip(), r_time.strftime("%H:%M")), commit=True)
+            st.success("रिमाइंडर सेव हो गया!")
+            st.rerun()
 
-st.sidebar.markdown("💬 **पुरानी बातचीत (History):**" if is_hi else "💬 **Chat History:**")
+    user_notes = db_query("SELECT id, note, remind_time FROM notes WHERE username = ?", (st.session_state.logged_in_user,), fetchall=True)
+    if user_notes:
+        st.write("**आपके शेड्यूल:**")
+        for n_id, n_text, n_t in user_notes:
+            st.write(f"• {n_text} ({n_t if n_t else 'नोट'})")
+        if st.button("🗑 सारे साफ़ करें", use_container_width=True):
+            db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
+            st.rerun()
 
+# Search Chat & History
+st.sidebar.subheader("🔍 चैट खोजें" if is_hi else "🔍 Search Chat")
+search_term = st.sidebar.text_input("ढूँढें...", placeholder="उदा. मौसम, सवाल").strip().lower()
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
 
 if all_convos:
@@ -201,41 +241,15 @@ if all_convos:
             if loaded_msgs:
                 st.session_state.messages = [{"role": r, "content": c} for r, c in loaded_msgs]
             st.rerun()
-else:
-    st.sidebar.caption("अभी कोई पुरानी चैट नहीं है।" if is_hi else "No saved chats yet.")
-
-st.sidebar.markdown("---")
-
-# Diary Notes Section
-with st.sidebar.expander("📝 जुगनू डायरी (Notes)" if is_hi else "📝 Notes Diary", expanded=False):
-    new_note = st.text_input("काम लिखें:" if is_hi else "New Note:", placeholder="उदा. बैंक जाना है" if is_hi else "e.g. buy groceries")
-    if st.button("➕ नोट जोड़ें" if is_hi else "Add Note", use_container_width=True):
-        if new_note.strip():
-            db_query("INSERT INTO notes (username, note) VALUES (?, ?)", (st.session_state.logged_in_user, new_note.strip()), commit=True)
-            st.session_state.personal_notes.append(new_note.strip())
-            st.rerun()
-
-    if st.session_state.personal_notes:
-        for idx, note in enumerate(st.session_state.personal_notes):
-            st.write(f"{idx+1}. {note}")
-        if st.button("🗑 सारे नोट हटाएँ" if is_hi else "Clear Notes", use_container_width=True):
-            db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
-            st.session_state.personal_notes = []
-            st.rerun()
 
 # Creator Banner
 c1, c2 = st.columns([1, 4])
 with c1:
     creator_img = None
-    for fname in ["creater 1.jpg", "creater 1.png", "creator 1.jpg", "creator 1.png", "creater.jpg", "creator.jpg"]:
+    for fname in ["creater 1.jpg", "creater 1.png", "creator 1.jpg", "creator 1.png"]:
         if os.path.exists(fname):
             creator_img = fname
             break
-    if not creator_img:
-        for f in os.listdir("."):
-            if f.lower().endswith((".jpg", ".png", ".jpeg")):
-                creator_img = f
-                break
     if creator_img:
         st.image(creator_img, width=80)
     else:
@@ -243,7 +257,7 @@ with c1:
 
 with c2:
     st.subheader("✨ JUGNU AI")
-    st.caption("निर्माता: अरविंद सिंह | पर्सनल स्मार्ट साथी" if is_hi else "Created by: Arvind Singh | Personal Smart Assistant")
+    st.caption("निर्माता: अरविंद सिंह | पर्सनल स्मार्ट साथी")
 
 st.divider()
 
@@ -265,79 +279,50 @@ def play_audio(text, autoplay=False, slow=False, lang="hi"):
     except Exception:
         pass
 
-def try_evaluate_math(prompt_text, lang="Hindi"):
-    text = prompt_text.lower().replace("प्रतिशत", "%").replace("percent", "%")
-    pct_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ka|का|of)\s*(\d+(?:\.\d+)?)\s*%", text)
-    if pct_match:
-        res = (float(pct_match.group(1)) * float(pct_match.group(2))) / 100.0
-        return f"{pct_match.group(1)} का {pct_match.group(2)}% बराबर {res:g} होगा।" if lang == "Hindi" else f"{pct_match.group(2)}% of {pct_match.group(1)} is {res:g}."
-    clean = text.replace("गुना", "*").replace("गुणा", "*").replace("into", "*").replace("x", "*")
-    clean = clean.replace("भाग", "/").replace("divide", "/").replace("बटा", "/")
-    clean = clean.replace("जोड़", "+").replace("plus", "+").replace("घटाव", "-").replace("minus", "-")
-    expr_match = re.search(r"(\d+(?:\.\d+)?\s*[\+\-\*\/]\s*\d+(?:\.\d+)?)", clean)
-    if expr_match:
-        try:
-            ans = eval(expr_match.group(1), {"__builtins__": None}, {})
-            return f"उत्तर {ans:g} है।" if lang == "Hindi" else f"The answer is {ans:g}."
-        except Exception:
-            pass
-    return None
-
-def fetch_image_from_prompt(prompt_text):
-    clean = prompt_text.lower()
-    for w in ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र", "banao", "बनाओ", "बनाकर", "दो", "chahiye", "मुझे", "एक", "की", "का"]:
-        clean = clean.replace(w, "")
-    clean = clean.strip()
-    if "jaisalmer" in clean or "जैसलमेर" in clean:
-        query, caption = "golden majestic Jaisalmer fort Thar desert photography", "जैसलमेर फोर्ट"
-    elif "bullet" in clean or "bike" in clean:
-        query, caption = "Royal Enfield bullet bike parked in desert rajasthan", "रॉयल एनफील्ड बुलेट"
-    elif "desert" in clean or "रेगिस्तान" in clean:
-        query, caption = "beautiful Thar desert golden sand dunes rajasthan", "थार रेगिस्तान"
-    else:
-        query, caption = (clean if clean else "beautiful Rajasthan landscape"), (clean if clean else "सुंदर दृश्य")
-    return f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true", caption
+def live_web_search(query):
+    try:
+        results = DDGS().text(query, max_results=3)
+        if results:
+            snippet = "\n".join([r.get("body", "") for r in results])
+            return snippet
+    except Exception:
+        pass
+    return ""
 
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
-    
-    if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र"]) and any(a in p for a in ["banao", "बनाओ", "बनाकर", "dikhao", "generate", "create", "chahiye"]):
-        img_url, cap = fetch_image_from_prompt(prompt_text)
-        return f"IMAGE_GEN:{img_url}|{cap}"
-        
-    if any(k in p for k in ["bare me", "batao", "kahan ke", "papa", "pita", "father", "village", "gaav", "who made", "creator"]) and any(w in p for w in ["jisne", "banaya", "arvind", "creator", "made you"]):
-        if lang == "Hindi":
-            return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
-        return "I was created by Arvind Singh. His father is Mr. Rewant Singh, his native village is Doojasar, and he currently lives in Shri Mohangarh."
-        
-    if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "who created you"]):
-        return "मुझे अरविंद सिंह ने बनाया है।" if lang == "Hindi" else "I was created by Arvind Singh."
 
-    if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "नोट बताओ", "my notes"]):
-        if not st.session_state.personal_notes:
-            return "आपकी डायरी में अभी कोई नोट सेव नहीं है।" if lang == "Hindi" else "You have no notes saved yet."
-        return ("आपकी डायरी के काम: " if lang == "Hindi" else "Your notes: ") + "। ".join([f"{i+1}: {n}" for i, n in enumerate(st.session_state.personal_notes)])
+    # Image gen trigger
+    if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image"]) and any(a in p for a in ["banao", "बनाओ", "dikhao", "generate"]):
+        query = p.replace("photo", "").replace("banao", "").replace("फोटो", "").replace("बनाओ", "").strip()
+        if not query:
+            query = "Rajasthan royal heritage culture"
+        img_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true"
+        return f"IMAGE_GEN:{img_url}|{query}"
 
-    math_ans = try_evaluate_math(prompt_text, lang)
-    if math_ans:
-        return math_ans
+    # Live Search Trigger
+    search_context = ""
+    if any(k in p for k in ["live", "आज का", "ताजा", "खबर", "समाचार", "news", "भाव", "मंडी"]):
+        search_context = live_web_search(prompt_text)
 
-    if any(k in p for k in ["samay", "time", "kitne baje", "तारीख", "date", "दिन", "समय"]):
-        ist_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
-        days = {"Monday": "सोमवार", "Tuesday": "मंगलवार", "Wednesday": "बुधवार", "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"}
-        if any(k in p for k in ["samay", "time", "समय"]):
-            return f"अभी समय {ist_now.strftime('%I:%M %p')} हुआ है।" if lang == "Hindi" else f"The current time is {ist_now.strftime('%I:%M %p')}."
-        return f"आज {days.get(ist_now.strftime('%A'), '')} है और तारीख {ist_now.strftime('%d-%m-%Y')} है।" if lang == "Hindi" else f"Today is {ist_now.strftime('%A')}, {ist_now.strftime('%d-%m-%Y')}."
-
-    if any(k in p for k in ["mausam", "weather", "मौसम"]):
-        return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है।" if lang == "Hindi" else "The weather in Shri Mohangarh is pleasant and sunny."
-
-    if lang == "Hindi":
+    # Tone Setup
+    if "मारवाड़ी" in mode_name:
+        sys_txt = (
+            f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
+            f"यूजर को नाम {st.session_state.logged_in_name} है। "
+            "थनै मीठी राजस्थानी/मारवाड़ी मिश्रित हिंदी में 1-2 छोटा वाक्यों में बढ़िया जवाब देणो है।"
+        )
+    elif lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
     else:
-        sys_txt = f"You are JUGNU AI, created by Arvind Singh. The user is {st.session_state.logged_in_name}. Respond naturally in 1-2 clear English sentences."
+        sys_txt = f"You are JUGNU AI, created by Arvind Singh. Respond naturally in 1-2 clear English sentences."
 
-    # Dynamic model detection: account me available pehle working model ko choose karega
+    if st.session_state.uploaded_doc_text:
+        sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
+
+    if search_context:
+        sys_txt += f"\n\nइंटरनेट से ताज़ा सर्च जानकारी:\n{search_context}\nताज़ा जानकारी के आधार पर उत्तर दें।"
+
     available_model_ids = []
     try:
         models_data = client.models.list()
@@ -345,20 +330,12 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     except Exception:
         pass
 
-    preferred_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    preferred_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768"]
     model_to_use = "llama-3.1-8b-instant"
-
     for pm in preferred_models:
         if pm in available_model_ids:
             model_to_use = pm
             break
-    else:
-        if available_model_ids:
-            # Fallback to any text chat model
-            for mid in available_model_ids:
-                if "whisper" not in mid:
-                    model_to_use = mid
-                    break
 
     try:
         res = client.chat.completions.create(
@@ -369,7 +346,7 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         )
         return res.choices[0].message.content.strip()
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"त्रुटि: {str(e)}"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
@@ -378,95 +355,50 @@ for i, msg in enumerate(st.session_state.messages):
         c = msg["content"]
         if c.startswith("IMAGE_GEN:"):
             parts = c.replace("IMAGE_GEN:", "").split("|")
-            st.write(f"🎨 **जुगनू ने बनाई: {parts[1]}**" if is_hi else f"🎨 **Generated: {parts[1]}**")
+            st.write(f"🎨 **जुगनू ने बनाई: {parts[1]}**")
             st.image(parts[0], use_container_width=True)
-            st.markdown(f"[यहाँ क्लिक करके फोटो डाउनलोड करें]({parts[0]})" if is_hi else f"[Download Photo]({parts[0]})")
+            st.markdown(f"[यहाँ क्लिक करके फोटो डाउनलोड करें]({parts[0]})")
         else:
             st.write(c)
             if msg["role"] == "assistant":
                 play_audio(c, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice, lang=st.session_state.app_lang)
 
-# 8 Suggestion Buttons
-st.write("")
-st.caption("त्वरित सुझाव:" if is_hi else "Quick Suggestions:")
-r1 = st.columns(4)
-r2 = st.columns(4)
-quick_prompt = None
-
-if is_hi:
-    if r1[0].button("👑 निर्माता", use_container_width=True): quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-    if r1[1].button("⏰ समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
-    if r1[2].button("🌤 मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
-    if r1[3].button("😄 चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
-
-    if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
-    if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
-    if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
-    if r2[3].button("📝 नोट्स", use_container_width=True): quick_prompt = "mere notes batao"
-else:
-    if r1[0].button("👑 Creator", use_container_width=True): quick_prompt = "Tell me about your creator."
-    if r1[1].button("⏰ Time", use_container_width=True): quick_prompt = "What is the time right now?"
-    if r1[2].button("🌤 Weather", use_container_width=True): quick_prompt = "How is the weather today?"
-    if r1[3].button("😄 Joke", use_container_width=True): quick_prompt = "Tell me a short funny joke."
-
-    if r2[0].button("🎨 Photo", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
-    if r2[1].button("🎯 Quiz", use_container_width=True): quick_prompt = "Ask me a simple trivia question."
-    if r2[2].button("🍎 Health", use_container_width=True): quick_prompt = "Give me one healthy lifestyle tip."
-    if r2[3].button("📝 Notes", use_container_width=True): quick_prompt = "my notes"
-
-# Centered Mic Widget
+# Mic and Chat Input
 st.write("")
 _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# User Text Input & Disclaimer
-user_text = st.chat_input("यहाँ लिखकर या ऊपर माइक से पूछिए..." if is_hi else "Ask here or use the mic above...")
-st.caption("जुगनू एक AI है और इससे गलतियाँ हो सकती हैं।" if is_hi else "JUGNU is an AI and may make mistakes.")
+user_text = st.chat_input("यहाँ लिखकर, माइक से या फ़ाइल अपलोड करके पूछिए...")
 
 def handle_user_query(query_text):
     if not st.session_state.current_session_id:
         st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        
     s_id = st.session_state.current_session_id
-    
-    # Save conversation session title if first query
+
     exists_convo = db_query("SELECT session_id FROM conversations WHERE session_id = ?", (s_id,), fetchone=True)
     if not exists_convo:
         convo_title = query_text[:28] if len(query_text) <= 28 else query_text[:28] + "..."
         db_query("INSERT INTO conversations (session_id, username, title) VALUES (?, ?, ?)", 
                  (s_id, st.session_state.logged_in_user, convo_title), commit=True)
 
-    # Save User message
     st.session_state.messages.append({"role": "user", "content": query_text})
     db_query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
              (s_id, "user", query_text), commit=True)
     
-    with st.spinner("जुगनू काम कर रहा है..." if is_hi else "JUGNU is thinking..."):
+    with st.spinner("जुगनू काम कर रहा है..."):
         reply = get_jugnu_response(query_text, bot_mode, st.session_state.app_lang)
-    
-    q_low = query_text.lower()
-    if not reply.startswith("IMAGE_GEN:"):
-        if "youtube" in q_low:
-            term = query_text.replace("youtube", "").replace("par", "").strip()
-            reply += f"\n\n▶ [YouTube पर देखें](https://www.youtube.com/results?search_query={term})"
-        elif "google" in q_low:
-            term = query_text.replace("google", "").replace("par", "").strip()
-            reply += f"\n\n🔍 [Google पर खोजें](https://www.google.com/search?q={term})"
 
-    # Save Assistant message
     st.session_state.messages.append({"role": "assistant", "content": reply})
     db_query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
              (s_id, "assistant", reply), commit=True)
     st.rerun()
 
-if quick_prompt:
-    handle_user_query(quick_prompt)
-elif voice_input is not None:
+if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
         st.session_state.last_voice = audio_bytes
-        with st.spinner("आवाज़ सुनी जा रही है..." if is_hi else "Listening..."):
+        with st.spinner("आवाज़ सुनी जा रही है..."):
             recognized_text = ""
             try:
                 audio_file = io.BytesIO(audio_bytes)
