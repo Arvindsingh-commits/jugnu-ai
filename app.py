@@ -1,6 +1,7 @@
 import os
 import io
 import re
+import sqlite3
 import urllib.parse
 import datetime
 from io import BytesIO
@@ -10,27 +11,73 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# 1. User Database & Session State
-DEFAULT_USERS = {
-    "arvind": {"name": "अरविंद सिंह", "pin": "1234"},
-    "admin": {"name": "एडमिन", "pin": "0000"}
-}
+# --- Mobile-Friendly UI & CSS ---
+st.markdown("""
 
-if "user_db" not in st.session_state:
-    st.session_state.user_db = DEFAULT_USERS
+""", unsafe_allow_html=True)
 
+# --- SQLite Permanent Database Setup ---
+DB_FILE = "jugnu_data.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            name TEXT,
+            pin TEXT
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            role TEXT,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            note TEXT
+        )
+    """)
+    # Default initial users
+    cursor.execute("INSERT OR IGNORE INTO users VALUES ('arvind', 'अरविंद सिंह', '1234')")
+    cursor.execute("INSERT OR IGNORE INTO users VALUES ('admin', 'एडमिन', '0000')")
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    data = None
+    if fetchone:
+        data = cursor.fetchone()
+    elif fetchall:
+        data = cursor.fetchall()
+    if commit:
+        conn.commit()
+    conn.close()
+    return data
+
+# --- Session States ---
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
-
+if "logged_in_name" not in st.session_state:
+    st.session_state.logged_in_name = None
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
-    ]
-
+    st.session_state.messages = []
 if "personal_notes" not in st.session_state:
     st.session_state.personal_notes = []
 
-# 2. Login Screen
+# --- 1. Login Screen ---
 if not st.session_state.logged_in_user:
     st.title("✨ JUGNU AI Assistant")
     st.write("कृपया जुगनू का उपयोग करने के लिए लॉगिन करें")
@@ -44,8 +91,19 @@ if not st.session_state.logged_in_user:
             submit_login = st.form_submit_button("लॉगिन करें", use_container_width=True)
             
             if submit_login:
-                if uname in st.session_state.user_db and st.session_state.user_db[uname]["pin"] == upin:
-                    st.session_state.logged_in_user = st.session_state.user_db[uname]["name"]
+                user = db_query("SELECT name, pin FROM users WHERE username = ?", (uname,), fetchone=True)
+                if user and user[1] == upin:
+                    st.session_state.logged_in_user = uname
+                    st.session_state.logged_in_name = user[0]
+                    # Load chat history from DB
+                    history = db_query("SELECT role, content FROM chat_history WHERE username = ? ORDER BY id ASC", (uname,), fetchall=True)
+                    if history:
+                        st.session_state.messages = [{"role": r, "content": c} for r, c in history]
+                    else:
+                        st.session_state.messages = [{"role": "assistant", "content": f"नमस्ते {user[0]} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}]
+                    # Load notes from DB
+                    notes = db_query("SELECT note FROM notes WHERE username = ?", (uname,), fetchall=True)
+                    st.session_state.personal_notes = [n[0] for n in notes] if notes else []
                     st.success("लॉगिन सफल रहा!")
                     st.rerun()
                 else:
@@ -61,20 +119,29 @@ if not st.session_state.logged_in_user:
             if submit_signup:
                 if not new_name or not new_uname or not new_pin:
                     st.warning("कृपया सभी विवरण भरें।")
-                elif new_uname in st.session_state.user_db:
-                    st.error("यह यूज़रनेम पहले से मौजूद है।")
                 else:
-                    st.session_state.user_db[new_uname] = {"name": new_name, "pin": new_pin}
-                    st.session_state.logged_in_user = new_name
-                    st.success("खाता बन गया!")
-                    st.rerun()
-    
+                    exists = db_query("SELECT username FROM users WHERE username = ?", (new_uname,), fetchone=True)
+                    if exists:
+                        st.error("यह यूज़रनेम पहले से मौजूद है।")
+                    else:
+                        db_query("INSERT INTO users VALUES (?, ?, ?)", (new_uname, new_name, new_pin), commit=True)
+                        st.session_state.logged_in_user = new_uname
+                        st.session_state.logged_in_name = new_name
+                        st.session_state.messages = [{"role": "assistant", "content": f"नमस्ते {new_name} जी! आपका खाता बन गया है। कहिए क्या मदद करूँ?"}]
+                        st.session_state.personal_notes = []
+                        db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
+                                 (new_uname, "assistant", st.session_state.messages[0]["content"]), commit=True)
+                        st.success("खाता सफलतापूर्वक बन गया!")
+                        st.rerun()
     st.stop()
 
-# 3. Dashboard (Login ke baad)
-st.sidebar.write(f"👤 **{st.session_state.logged_in_user}**")
+# --- 2. Main Dashboard (Logged In) ---
+st.sidebar.write(f"👤 **{st.session_state.logged_in_name}**")
 if st.sidebar.button("लॉगआउट (Logout)", use_container_width=True):
     st.session_state.logged_in_user = None
+    st.session_state.logged_in_name = None
+    st.session_state.messages = []
+    st.session_state.personal_notes = []
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -88,19 +155,24 @@ st.sidebar.subheader("डायरी (Notes)")
 new_note = st.sidebar.text_input("नया काम लिखें:", placeholder="उदा. 5 बजे काम है")
 if st.sidebar.button("नोट जोड़ें", use_container_width=True):
     if new_note.strip():
+        db_query("INSERT INTO notes (username, note) VALUES (?, ?)", (st.session_state.logged_in_user, new_note.strip()), commit=True)
         st.session_state.personal_notes.append(new_note.strip())
-        st.sidebar.success("नोट सेव हुआ!")
+        st.sidebar.success("नोट सुरक्षित सेव हुआ!")
         st.rerun()
 
 if st.session_state.personal_notes:
     for idx, note in enumerate(st.session_state.personal_notes):
         st.sidebar.write(f"{idx+1}. {note}")
     if st.sidebar.button("सारे नोट हटाएँ", use_container_width=True):
+        db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
         st.session_state.personal_notes = []
         st.rerun()
 
 if st.sidebar.button("पूरी चैट साफ़ करें", use_container_width=True):
-    st.session_state.messages = [{"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}]
+    db_query("DELETE FROM chat_history WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
+    welcome_text = f"नमस्ते {st.session_state.logged_in_name} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"
+    st.session_state.messages = [{"role": "assistant", "content": welcome_text}]
+    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", (st.session_state.logged_in_user, "assistant", welcome_text), commit=True)
     st.session_state.pop("last_voice", None)
     st.rerun()
 
@@ -128,6 +200,7 @@ with c2:
 
 st.divider()
 
+# Backend API
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
@@ -202,7 +275,7 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in ["mausam", "weather", "मौसम"]):
         return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है।"
 
-    sys_txt = f"तुम जुगनू AI हो, अरविंद सिंह द्वारा बनाए गए। उपयोगकर्ता का नाम {st.session_state.logged_in_user} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में उत्तर दो।"
+    sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
     try:
         res = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -214,7 +287,7 @@ def get_jugnu_response(prompt_text, mode_name):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# Chat Message List
+# Chat Message Stream
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -229,37 +302,43 @@ for i, msg in enumerate(st.session_state.messages):
             if msg["role"] == "assistant":
                 play_audio(c, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
-# Quick Suggestion Buttons
+# 8 Responsive Suggestion Buttons
 st.write("")
 st.caption("त्वरित सुझाव:")
 r1 = st.columns(4)
 r2 = st.columns(4)
 quick_prompt = None
 
-if r1[0].button("निर्माता", use_container_width=True): quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if r1[1].button("समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
-if r1[2].button("मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
-if r1[3].button("चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
+if r1[0].button("👑 निर्माता", use_container_width=True): quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
+if r1[1].button("⏰ समय", use_container_width=True): quick_prompt = "Abhi kya samay hua hai?"
+if r1[2].button("🌤 मौसम", use_container_width=True): quick_prompt = "Mohangarh me mausam kaisa hai?"
+if r1[3].button("😄 चुटकुला", use_container_width=True): quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
-if r2[0].button("फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
-if r2[1].button("क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
-if r2[2].button("सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
-if r2[3].button("नोट्स", use_container_width=True): quick_prompt = "mere notes batao"
+if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
+if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
+if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
+if r2[3].button("📝 नोट्स", use_container_width=True): quick_prompt = "mere notes batao"
 
-# Mic Box
+# Centered Mic Widget
 st.write("")
 _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# Chat Input & Disclaimer
+# User Text Input & Disclaimer
 user_text = st.chat_input("यहाँ लिखकर या ऊपर माइक से पूछिए...")
 st.caption("जुगनू एक AI है और इससे गलतियाँ हो सकती हैं।")
 
 def handle_user_query(query_text):
+    # 1. UI session update
     st.session_state.messages.append({"role": "user", "content": query_text})
+    # 2. Save User message to Database
+    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
+             (st.session_state.logged_in_user, "user", query_text), commit=True)
+    
     with st.spinner("जुगनू काम कर रहा है..."):
         reply = get_jugnu_response(query_text, bot_mode)
+    
     q_low = query_text.lower()
     if not reply.startswith("IMAGE_GEN:"):
         if "youtube" in q_low:
@@ -268,7 +347,12 @@ def handle_user_query(query_text):
         elif "google" in q_low:
             term = query_text.replace("google", "").replace("par", "").strip()
             reply += f"\n\n🔍 [Google पर खोजें](https://www.google.com/search?q={term})"
+
+    # 3. UI session update
     st.session_state.messages.append({"role": "assistant", "content": reply})
+    # 4. Save Assistant response to Database
+    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
+             (st.session_state.logged_in_user, "assistant", reply), commit=True)
     st.rerun()
 
 if quick_prompt:
