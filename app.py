@@ -20,7 +20,6 @@ st.markdown("""
 
 # --- SQLite Database ---
 DB_FILE = "jugnu_data.db"
-DAILY_FREE_LIMIT = 15
 
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -93,11 +92,11 @@ if "user_plan" not in st.session_state:
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। आज आपरी कांई सेवा करूँ?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
 if "uploaded_doc_text" not in st.session_state:
     st.session_state.uploaded_doc_text = ""
 
-# --- Sidebar Features ---
+# --- Sidebar ---
 is_hi = (st.session_state.app_lang == "Hindi")
 badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"
 
@@ -111,7 +110,7 @@ if st.sidebar.button("➕ नई चैट (+ New Chat)", use_container_width=Tr
 st.sidebar.markdown("---")
 
 # 1. File Upload / PDF Reader
-with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस", expanded=True):
+with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस", expanded=False):
     uploaded_file = st.file_uploader("PDF या TXT अपलोड करें", type=["pdf", "txt"])
     if uploaded_file is not None:
         try:
@@ -126,7 +125,7 @@ with st.sidebar.expander("📄 फ़ाइल / PDF एनालिसिस", 
             st.error(f"फ़ाइल पढ़ने में त्रुटि: {e}")
 
 # 2. Tone & Settings
-with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़ (Persona)", expanded=True):
+with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़ (Settings)", expanded=True):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
@@ -140,7 +139,7 @@ with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज
     voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
     is_slow_voice = (voice_speed == "धीमी")
 
-# 3. Smart Reminders
+# 3. Smart Reminders & Notes
 with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व डायरी", expanded=False):
     r_text = st.text_input("काम लिखें:", placeholder="उदा. 5 बजे काम है")
     r_time = st.time_input("समय चुनें:", value=datetime.time(17, 0))
@@ -240,11 +239,11 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         search_context = live_web_search(prompt_text)
 
     # Tone Setup
-    if "मारवाड़ी" in mode_name:
+    if "मारवाड़ी" in mode_name or "marwadi" in p:
         sys_txt = (
             f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै मीठी राजस्थानी/मारवाड़ी मिश्रित हिंदी में 1-2 छोटा वाक्यों में बढ़िया जवाब देणो है।"
+            "थनै मीठी राजस्थानी/मारवाड़ी मिश्रित हिंदी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोल सकूँ हूँ' कह कर बढ़िया जवाब देणो है।"
         )
     elif lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
@@ -252,26 +251,22 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         sys_txt = f"You are JUGNU AI, created by Arvind Singh. Respond naturally in 1-2 clear English sentences."
 
     if st.session_state.uploaded_doc_text:
-        sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
+        sys_txt += f"\n\nफ़ाइल जानकारी:\n{st.session_state.uploaded_doc_text}\nइसके आधार पर उत्तर दें।"
 
     if search_context:
-        sys_txt += f"\n\nइंटरनेट से ताज़ा सर्च जानकारी:\n{search_context}\nताज़ा जानकारी के आधार पर उत्तर दें।"
+        sys_txt += f"\n\nलाइव सर्च जानकारी:\n{search_context}\nइसके आधार पर उत्तर दें।"
 
-    # Groq Official Working Text Chat Models (No TTS models)
-    target_models = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
-    for m in target_models:
-        try:
-            res = client.chat.completions.create(
-                model=m,
-                messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
-                max_tokens=150,
-                temperature=0.4
-            )
-            return res.choices[0].message.content.strip()
-        except Exception:
-            continue
-            
-    return "माफ़ी चाहता हूँ, इस समय उत्तर देने में असमर्थ हूँ।"
+    # Pure standard Groq Chat Model without dynamic detection bug
+    try:
+        res = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
+            max_tokens=150,
+            temperature=0.4
+        )
+        return res.choices[0].message.content.strip()
+    except Exception as e:
+        return f"त्रुटि: {str(e)}"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
