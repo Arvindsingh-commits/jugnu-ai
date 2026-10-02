@@ -1,3 +1,6 @@
 streamlit
 groq
 gTTS
+requests
+pypdf
+duckduckgo-search
