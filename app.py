@@ -185,7 +185,7 @@ client = Groq(api_key=api_key)
 def play_audio(text, autoplay=False, slow=False, lang="hi"):
     try:
         clean_text = text.split("http")[0].split("▶")[0].split("🔍")[0].strip()
-        if not clean_text or clean_text.startswith("IMAGE_GEN:"):
+        if not clean_text or clean_text.startswith("IMAGE_GEN:") or clean_text.startswith("त्रुटि:"):
             return
         sound = BytesIO()
         tts_lang = "hi" if lang == "Hindi" else "en"
@@ -199,7 +199,13 @@ def play_audio(text, autoplay=False, slow=False, lang="hi"):
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
 
-    # Image gen trigger
+    # Direct hardcoded answers for basic queries
+    if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "banaya ha"]):
+        return "मुझे अरविंद सिंह ने बनाया है, जिनका गाँव दूजासर है और वर्तमान में श्री मोहनगढ़ में रहते हैं।"
+
+    if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "aave"]):
+        return "हाँ भाई, म्हूँ मीठी मारवाड़ी बोल सकूँ हूँ! हुकम करो, आज कांई बात करनी है?"
+
     if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image"]) and any(a in p for a in ["banao", "बनाओ", "dikhao", "generate"]):
         query = p.replace("photo", "").replace("banao", "").replace("फोटो", "").replace("बनाओ", "").strip()
         if not query:
@@ -211,7 +217,7 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         sys_txt = (
             f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोलूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
+            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोल सकूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
         )
     elif lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
@@ -221,9 +227,9 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     if st.session_state.uploaded_doc_text:
         sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
 
-    # Safe model query loop
-    candidate_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
-    last_err = ""
+    # Multiple Groq Models Trial
+    candidate_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    errors = []
     for mod in candidate_models:
         try:
             res = client.chat.completions.create(
@@ -234,10 +240,10 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
             )
             return res.choices[0].message.content.strip()
         except Exception as e:
-            last_err = str(e)
+            errors.append(f"{mod}: {str(e)}")
             continue
 
-    return f"त्रुटि: {last_err}"
+    return "त्रुटि (Groq Error): " + " | ".join(errors)
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
