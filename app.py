@@ -11,12 +11,12 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# --- Mobile-Friendly UI & CSS ---
+# --- UI Styling ---
 st.markdown("""
 
 """, unsafe_allow_html=True)
 
-# --- SQLite Database Setup ---
+# --- SQLite Database ---
 DB_FILE = "jugnu_data.db"
 
 def init_db():
@@ -30,9 +30,17 @@ def init_db():
         )
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS conversations (
+            session_id TEXT PRIMARY KEY,
             username TEXT,
+            title TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
             role TEXT,
             content TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -69,11 +77,12 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
 # --- Session States ---
 if "app_lang" not in st.session_state:
     st.session_state.app_lang = "Hindi"
-
 if "logged_in_user" not in st.session_state:
     st.session_state.logged_in_user = None
 if "logged_in_name" not in st.session_state:
     st.session_state.logged_in_name = None
+if "current_session_id" not in st.session_state:
+    st.session_state.current_session_id = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "personal_notes" not in st.session_state:
@@ -83,13 +92,11 @@ if "personal_notes" not in st.session_state:
 if not st.session_state.logged_in_user:
     st.title("✨ JUGNU AI Assistant")
     
-    # Language Selection on Login Page
     selected_lang = st.radio("🌐 भाषा चुनें / Select Language:", ["हिंदी (Hindi)", "English"], horizontal=True)
     st.session_state.app_lang = "Hindi" if "हिंदी" in selected_lang else "English"
-    
     is_hi = (st.session_state.app_lang == "Hindi")
-    st.write("कृपया जुगनू का उपयोग करने के लिए लॉगिन करें" if is_hi else "Please log in to use JUGNU AI")
     
+    st.write("कृपया जुगनू का उपयोग करने के लिए लॉगिन करें" if is_hi else "Please log in to use JUGNU AI")
     tab_login, tab_signup = st.tabs(["लॉगिन (Login)" if is_hi else "Login", "नया खाता (Sign Up)" if is_hi else "Sign Up"])
     
     with tab_login:
@@ -103,12 +110,10 @@ if not st.session_state.logged_in_user:
                 if user and user[1] == upin:
                     st.session_state.logged_in_user = uname
                     st.session_state.logged_in_name = user[0]
-                    history = db_query("SELECT role, content FROM chat_history WHERE username = ? ORDER BY id ASC", (uname,), fetchall=True)
-                    if history:
-                        st.session_state.messages = [{"role": r, "content": c} for r, c in history]
-                    else:
-                        welcome_txt = f"नमस्ते {user[0]} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?" if is_hi else f"Hello {user[0]}! I am JUGNU AI. How can I help you today?"
-                        st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
+                    st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    welcome_txt = f"नमस्ते {user[0]} जी! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?" if is_hi else f"Hello {user[0]}! I am JUGNU AI. How can I help you today?"
+                    st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
+                    
                     notes = db_query("SELECT note FROM notes WHERE username = ?", (uname,), fetchall=True)
                     st.session_state.personal_notes = [n[0] for n in notes] if notes else []
                     st.success("लॉगिन सफल रहा!" if is_hi else "Login successful!")
@@ -134,11 +139,10 @@ if not st.session_state.logged_in_user:
                         db_query("INSERT INTO users VALUES (?, ?, ?)", (new_uname, new_name, new_pin), commit=True)
                         st.session_state.logged_in_user = new_uname
                         st.session_state.logged_in_name = new_name
+                        st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                         welcome_txt = f"नमस्ते {new_name} जी! आपका खाता बन गया है। कहिए क्या मदद करूँ?" if is_hi else f"Hello {new_name}! Your account is ready. How can I assist you?"
                         st.session_state.messages = [{"role": "assistant", "content": welcome_txt}]
                         st.session_state.personal_notes = []
-                        db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
-                                 (new_uname, "assistant", welcome_txt), commit=True)
                         st.success("खाता सफलतापूर्वक बन गया!" if is_hi else "Account created successfully!")
                         st.rerun()
     st.stop()
@@ -146,57 +150,79 @@ if not st.session_state.logged_in_user:
 # --- 2. Main Dashboard (Logged In) ---
 is_hi = (st.session_state.app_lang == "Hindi")
 
-# Sidebar
+# Sidebar Header & User Profile
 st.sidebar.write(f"👤 **{st.session_state.logged_in_name}**")
-if st.sidebar.button("लॉगआउट (Logout)" if is_hi else "Logout", use_container_width=True):
+if st.sidebar.button("🚪 लॉगआउट (Logout)" if is_hi else "🚪 Logout", use_container_width=True):
     st.session_state.logged_in_user = None
     st.session_state.logged_in_name = None
+    st.session_state.current_session_id = None
     st.session_state.messages = []
-    st.session_state.personal_notes = []
     st.rerun()
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ सेटिंग्स (Settings)" if is_hi else "⚙️ Settings")
-
-# Language Setting in Sidebar
-chosen_lang = st.sidebar.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
-new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
-if new_lang != st.session_state.app_lang:
-    st.session_state.app_lang = new_lang
-    st.rerun()
-
-bot_mode = st.sidebar.selectbox(
-    "अंदाज़ (Mode):" if is_hi else "Mode:", 
-    ["दोस्ताना", "शिक्षक", "कहानीकार"] if is_hi else ["Friendly", "Teacher", "Storyteller"]
-)
-voice_speed = st.sidebar.radio("आवाज़ की गति:" if is_hi else "Voice Speed:", ["सामान्य", "धीमी"] if is_hi else ["Normal", "Slow"])
-is_slow_voice = (voice_speed in ["धीमी", "Slow"])
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📝 डायरी (Notes)" if is_hi else "📝 Notes Diary")
-new_note = st.sidebar.text_input("नया काम लिखें:" if is_hi else "Add new note:", placeholder="उदा. 5 बजे काम है")
-if st.sidebar.button("नोट जोड़ें" if is_hi else "Add Note", use_container_width=True):
-    if new_note.strip():
-        db_query("INSERT INTO notes (username, note) VALUES (?, ?)", (st.session_state.logged_in_user, new_note.strip()), commit=True)
-        st.session_state.personal_notes.append(new_note.strip())
-        st.sidebar.success("नोट सुरक्षित सेव हुआ!" if is_hi else "Note saved!")
-        st.rerun()
-
-if st.session_state.personal_notes:
-    for idx, note in enumerate(st.session_state.personal_notes):
-        st.sidebar.write(f"{idx+1}. {note}")
-    if st.sidebar.button("सारे नोट हटाएँ" if is_hi else "Clear All Notes", use_container_width=True):
-        db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
-        st.session_state.personal_notes = []
-        st.rerun()
-
-if st.sidebar.button("पूरी चैट साफ़ करें" if is_hi else "Clear Entire Chat", use_container_width=True):
-    db_query("DELETE FROM chat_history WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
-    welcome_text = f"नमस्ते {st.session_state.logged_in_name} जी! मैं जुगनू हूँ।" if is_hi else f"Hello {st.session_state.logged_in_name}! I am JUGNU."
+# Button for New Page / New Chat (ChatGPT Style)
+if st.sidebar.button("➕ नई चैट (+ New Chat)" if is_hi else "➕ New Chat", use_container_width=True):
+    st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    welcome_text = f"नमस्ते {st.session_state.logged_in_name} जी! नया पेज तैयार है। कहिए क्या मदद करूँ?" if is_hi else f"Hello {st.session_state.logged_in_name}! New chat started. How can I assist?"
     st.session_state.messages = [{"role": "assistant", "content": welcome_text}]
-    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", (st.session_state.logged_in_user, "assistant", welcome_text), commit=True)
-    st.session_state.pop("last_voice", None)
     st.rerun()
+
+st.sidebar.markdown("---")
+
+# Settings in Sidebar (Language & Modes)
+with st.sidebar.expander("⚙️ सेटिंग्स (Settings)" if is_hi else "⚙️ Settings", expanded=False):
+    chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
+    new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
+    if new_lang != st.session_state.app_lang:
+        st.session_state.app_lang = new_lang
+        st.rerun()
+
+    bot_mode = st.selectbox(
+        "अंदाज़ (Mode):" if is_hi else "Mode:", 
+        ["दोस्ताना", "शिक्षक", "कहानीकार"] if is_hi else ["Friendly", "Teacher", "Storyteller"]
+    )
+    voice_speed = st.radio("आवाज़ की गति:" if is_hi else "Voice Speed:", ["सामान्य", "धीमी"] if is_hi else ["Normal", "Slow"])
+    is_slow_voice = (voice_speed in ["धीमी", "Slow"])
+
+# Search Chat & History in Sidebar (ChatGPT Style)
+st.sidebar.subheader("🔍 चैट खोजें (Search Chat)" if is_hi else "🔍 Search Chat")
+search_term = st.sidebar.text_input("ढूँढें..." if is_hi else "Search chats...", placeholder="उदा. मौसम, सवाल" if is_hi else "Search keyword").strip().lower()
+
+st.sidebar.markdown("💬 **पुरानी बातचीत (History):**" if is_hi else "💬 **Chat History:**")
+
+# Fetch user's conversation sessions
+all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
+
+if all_convos:
+    for s_id, s_title in all_convos:
+        if search_term and search_term not in s_title.lower():
+            continue
+        if st.sidebar.button(f"📄 {s_title[:22]}", key=f"session_{s_id}", use_container_width=True):
+            st.session_state.current_session_id = s_id
+            loaded_msgs = db_query("SELECT role, content FROM messages WHERE session_id = ? ORDER BY id ASC", (s_id,), fetchall=True)
+            if loaded_msgs:
+                st.session_state.messages = [{"role": r, "content": c} for r, c in loaded_msgs]
+            st.rerun()
+else:
+    st.sidebar.caption("अभी कोई पुरानी चैट नहीं है।" if is_hi else "No saved chats yet.")
+
+st.sidebar.markdown("---")
+
+# Diary Notes Section
+with st.sidebar.expander("📝 जुगनू डायरी (Notes)" if is_hi else "📝 Notes Diary", expanded=False):
+    new_note = st.text_input("काम लिखें:" if is_hi else "New Note:", placeholder="उदा. बैंक जाना है" if is_hi else "e.g. buy groceries")
+    if st.button("➕ नोट जोड़ें" if is_hi else "Add Note", use_container_width=True):
+        if new_note.strip():
+            db_query("INSERT INTO notes (username, note) VALUES (?, ?)", (st.session_state.logged_in_user, new_note.strip()), commit=True)
+            st.session_state.personal_notes.append(new_note.strip())
+            st.rerun()
+
+    if st.session_state.personal_notes:
+        for idx, note in enumerate(st.session_state.personal_notes):
+            st.write(f"{idx+1}. {note}")
+        if st.button("🗑 सारे नोट हटाएँ" if is_hi else "Clear Notes", use_container_width=True):
+            db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
+            st.session_state.personal_notes = []
+            st.rerun()
 
 # Creator Banner
 c1, c2 = st.columns([1, 4])
@@ -222,7 +248,7 @@ with c2:
 
 st.divider()
 
-# Backend API
+# Backend API Setup
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
@@ -276,12 +302,10 @@ def fetch_image_from_prompt(prompt_text):
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
     
-    # Image generation trigger
     if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र"]) and any(a in p for a in ["banao", "बनाओ", "बनाकर", "dikhao", "generate", "create", "chahiye"]):
         img_url, cap = fetch_image_from_prompt(prompt_text)
         return f"IMAGE_GEN:{img_url}|{cap}"
         
-    # Creator info
     if any(k in p for k in ["bare me", "batao", "kahan ke", "papa", "pita", "father", "village", "gaav", "who made", "creator"]) and any(w in p for w in ["jisne", "banaya", "arvind", "creator", "made you"]):
         if lang == "Hindi":
             return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
@@ -290,18 +314,15 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "who created you"]):
         return "मुझे अरविंद सिंह ने बनाया है।" if lang == "Hindi" else "I was created by Arvind Singh."
 
-    # Notes
     if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "नोट बताओ", "my notes"]):
         if not st.session_state.personal_notes:
             return "आपकी डायरी में अभी कोई नोट सेव नहीं है।" if lang == "Hindi" else "You have no notes saved yet."
         return ("आपकी डायरी के काम: " if lang == "Hindi" else "Your notes: ") + "। ".join([f"{i+1}: {n}" for i, n in enumerate(st.session_state.personal_notes)])
 
-    # Math
     math_ans = try_evaluate_math(prompt_text, lang)
     if math_ans:
         return math_ans
 
-    # Time & Date
     if any(k in p for k in ["samay", "time", "kitne baje", "तारीख", "date", "दिन", "समय"]):
         ist_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=5, minutes=30)
         days = {"Monday": "सोमवार", "Tuesday": "मंगलवार", "Wednesday": "बुधवार", "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"}
@@ -309,28 +330,26 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
             return f"अभी समय {ist_now.strftime('%I:%M %p')} हुआ है।" if lang == "Hindi" else f"The current time is {ist_now.strftime('%I:%M %p')}."
         return f"आज {days.get(ist_now.strftime('%A'), '')} है और तारीख {ist_now.strftime('%d-%m-%Y')} है।" if lang == "Hindi" else f"Today is {ist_now.strftime('%A')}, {ist_now.strftime('%d-%m-%Y')}."
 
-    # Groq Chat
+    if any(k in p for k in ["mausam", "weather", "मौसम"]):
+        return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है।" if lang == "Hindi" else "The weather in Shri Mohangarh is pleasant and sunny."
+
     if lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
     else:
-        sys_txt = f"You are JUGNU AI, created by Arvind Singh. The user's name is {st.session_state.logged_in_name}. Respond naturally in 1-2 concise English sentences."
+        sys_txt = f"You are JUGNU AI, created by Arvind Singh. The user is {st.session_state.logged_in_name}. Respond naturally in 1-2 clear English sentences."
 
-    # Groq Supported Models fallback list
-    candidate_models = ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"]
-    for m in candidate_models:
-        try:
-            res = client.chat.completions.create(
-                model=m,
-                messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
-                max_tokens=150,
-                temperature=0.4
-            )
-            return res.choices[0].message.content.strip()
-        except Exception:
-            continue
-    return "माफ़ी चाहता हूँ, इस समय सर्वर से उत्तर नहीं मिल पा रहा है।" if lang == "Hindi" else "Sorry, I could not fetch a response at this moment."
+    try:
+        res = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
+            max_tokens=150,
+            temperature=0.4
+        )
+        return res.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-# Chat Message Stream (ChatGPT Style)
+# Chat Message Stream
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -345,7 +364,7 @@ for i, msg in enumerate(st.session_state.messages):
             if msg["role"] == "assistant":
                 play_audio(c, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice, lang=st.session_state.app_lang)
 
-# 8 Responsive Suggestion Buttons
+# 8 Suggestion Buttons
 st.write("")
 st.caption("त्वरित सुझाव:" if is_hi else "Quick Suggestions:")
 r1 = st.columns(4)
@@ -384,9 +403,22 @@ user_text = st.chat_input("यहाँ लिखकर या ऊपर मा�
 st.caption("जुगनू एक AI है और इससे गलतियाँ हो सकती हैं।" if is_hi else "JUGNU is an AI and may make mistakes.")
 
 def handle_user_query(query_text):
+    if not st.session_state.current_session_id:
+        st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        
+    s_id = st.session_state.current_session_id
+    
+    # Save conversation session title if first query
+    exists_convo = db_query("SELECT session_id FROM conversations WHERE session_id = ?", (s_id,), fetchone=True)
+    if not exists_convo:
+        convo_title = query_text[:28] if len(query_text) <= 28 else query_text[:28] + "..."
+        db_query("INSERT INTO conversations (session_id, username, title) VALUES (?, ?, ?)", 
+                 (s_id, st.session_state.logged_in_user, convo_title), commit=True)
+
+    # Save User message
     st.session_state.messages.append({"role": "user", "content": query_text})
-    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
-             (st.session_state.logged_in_user, "user", query_text), commit=True)
+    db_query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
+             (s_id, "user", query_text), commit=True)
     
     with st.spinner("जुगनू काम कर रहा है..." if is_hi else "JUGNU is thinking..."):
         reply = get_jugnu_response(query_text, bot_mode, st.session_state.app_lang)
@@ -400,9 +432,10 @@ def handle_user_query(query_text):
             term = query_text.replace("google", "").replace("par", "").strip()
             reply += f"\n\n🔍 [Google पर खोजें](https://www.google.com/search?q={term})"
 
+    # Save Assistant message
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    db_query("INSERT INTO chat_history (username, role, content) VALUES (?, ?, ?)", 
-             (st.session_state.logged_in_user, "assistant", reply), commit=True)
+    db_query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)", 
+             (s_id, "assistant", reply), commit=True)
     st.rerun()
 
 if quick_prompt:
