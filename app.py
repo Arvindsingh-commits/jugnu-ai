@@ -7,14 +7,20 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# Load Groq Key
+# API Key लोड करें
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
 def play_audio(text):
     try:
+        # अगर जवाब में बहुत बड़ा कोड हो तो आवाज़ सिर्फ पहले 250 अक्षरों की बनेगी
+        clean_text = text.split("```")[0].strip()
+        if not clean_text:
+            clean_text = "यहाँ आपका कोड तैयार है।"
+        clean_text = clean_text[:250]
+        
         sound = BytesIO()
-        tts = gTTS(text=text, lang="hi", slow=False)
+        tts = gTTS(text=clean_text, lang="hi", slow=False)
         tts.write_to_fp(sound)
         sound.seek(0)
         st.audio(sound, format="audio/mp3")
@@ -22,23 +28,22 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    # कड़ा सिस्टम निर्देश: केवल हिंदी या हिंग्लिश
     system_instruction = (
-        "You are JUGNU, an AI assistant. "
-        "CRITICAL RULE: You must ALWAYS respond ONLY in pure Hindi (Devanagari) or natural conversational Hinglish. "
-        "DO NOT use Arabic, Persian, or any other foreign language under any circumstances. "
-        "Keep your reply helpful, friendly, and within 2 to 4 sentences."
+        "आप जुगनू (JUGNU) हैं, एक मददगार AI साथी। "
+        "हमेशा हिंदी (Hindi) या हिंग्लिश (Hinglish) में बात करें। "
+        "अगर यूजर कोड माँगे, तो स्पष्ट और सही कोड दें। "
+        "अरबी या किसी अन्य विदेशी भाषा का प्रयोग बिल्कुल न करें।"
     )
     
-    # सबसे स्थिर और अच्छी हिंदी समझने वाले मॉडल्स
-    preferred_models = [
+    # चालू और स्टेबल मॉडल्स
+    candidate_models = [
         "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile",
-        "llama-3.2-3b-preview",
-        "llama-3.2-1b-preview"
+        "llama3-70b-8192",
+        "llama-3.1-8b-instant"
     ]
     
-    for model_id in preferred_models:
+    last_err = ""
+    for model_id in candidate_models:
         try:
             completion = client.chat.completions.create(
                 model=model_id,
@@ -46,36 +51,17 @@ def get_jugnu_response(prompt_text):
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=250,
-                temperature=0.5
+                max_tokens=800,
+                temperature=0.6
             )
-            reply = completion.choices[0].message.content.strip()
-            if reply:
-                return reply
-        except Exception:
+            res = completion.choices[0].message.content.strip()
+            if res:
+                return res
+        except Exception as e:
+            last_err = str(e)
             continue
-
-    # अगर ऊपर का कोई मॉडल न चले तो ऑटो-लिस्ट में से कोशिश करें
-    try:
-        model_list = [m.id for m in client.models.list().data if "llama" in m.id.lower() and "guard" not in m.id.lower()]
-        for m_id in model_list:
-            try:
-                completion = client.chat.completions.create(
-                    model=m_id,
-                    messages=[
-                        {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": prompt_text}
-                    ],
-                    max_tokens=250,
-                    temperature=0.5
-                )
-                return completion.choices[0].message.content.strip()
-            except Exception:
-                continue
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-    return "माफ़ कीजिए, अभी जवाब देने में समस्या आ रही है। कृपया दोबारा पूछें।"
+            
+    return f"त्रुटि (Error): {last_err}"
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
@@ -85,10 +71,10 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
 
-# स्क्रीन पर पुराने मैसेज दिखाना
+# स्क्रीन पर मैसेज दिखाना
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+        st.markdown(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
