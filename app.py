@@ -258,6 +258,93 @@ for i, msg in enumerate(st.session_state.messages):
             img_url = parts[0]
             cap = parts[1] if len(parts) > 1 else "AI Photo"
             
-            # Clean safe HTML rendering without multi-line f-string issues
-            html_code = (
-                '
+            st.markdown(f"**🎨 जुगनू ने बनाई:** {cap}")
+            st.markdown(f"[![{cap}]({img_url})]({img_url})")
+            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
+        else:
+            st.markdown(content)
+            if msg["role"] == "assistant":
+                play_audio(content, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
+
+# Sidebar Chat Export
+chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
+st.sidebar.download_button(
+    label="📥 बातचीत डाउनलोड करें",
+    data=chat_text,
+    file_name="jugnu_chat_history.txt",
+    mime="text/plain",
+    use_container_width=True
+)
+
+# Quick Suggestion Buttons
+st.write("")
+st.markdown("💡 **त्वरित सवाल (Quick Tap):**")
+q_row1 = st.columns(4)
+q_row2 = st.columns(4)
+quick_prompt = None
+
+if q_row1[0].button("👑 निर्माता कौन है?", use_container_width=True):
+    quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
+if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
+    quick_prompt = "Abhi kya samay hua hai?"
+if q_row1[2].button("🎨 फोटो बनाओ", use_container_width=True):
+    quick_prompt = "photo banao beautiful thar desert sunrise"
+if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
+    quick_prompt = "Ek mazedaar chhota chutkula sunao"
+
+if q_row2[0].button("🎯 क्विज़ खेलें", use_container_width=True):
+    quick_prompt = "Mujhse Rajasthan ya Bharat se juda ek rochak samanya gyan ka sawal poocho jisme 4 vikalp hon."
+if q_row2[1].button("🍎 सेहत टिप", use_container_width=True):
+    quick_prompt = "Aaj ke liye ek chhota aur faydemand health tip batao."
+if q_row2[2].button("📝 मेरे नोट्स", use_container_width=True):
+    quick_prompt = "mere notes batao"
+if q_row2[3].button("📖 एक सुविचार", use_container_width=True):
+    quick_prompt = "Aaj ka achha suvichar batao"
+
+with st.container(border=True):
+    st.markdown("🎙 **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
+    voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
+
+user_text = st.chat_input("यहाँ लिखकर पूछिए या फोटो बनाने को कहिए...")
+
+def handle_user_query(query_text):
+    st.session_state.messages.append({"role": "user", "content": query_text})
+    with st.spinner("जुगनू काम कर रहा है..."):
+        reply = get_jugnu_response(query_text, bot_mode)
+    
+    q_low = query_text.lower()
+    if not reply.startswith("IMAGE_GEN:"):
+        if "youtube" in q_low:
+            search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
+            reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
+        elif "google" in q_low:
+            search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
+            reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
+
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.rerun()
+
+if quick_prompt:
+    handle_user_query(quick_prompt)
+elif voice_input is not None:
+    audio_bytes = voice_input.getvalue()
+    if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
+        st.session_state.last_voice = audio_bytes
+        with st.spinner("आपकी आवाज़ सुनी जा रही है..."):
+            recognized_text = ""
+            try:
+                audio_file = io.BytesIO(audio_bytes)
+                audio_file.name = "recording.wav"
+                transcription = client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-large-v3-turbo",
+                    language="hi"
+                )
+                recognized_text = transcription.text.strip()
+            except Exception as e:
+                st.error(f"Voice error: {str(e)}")
+
+        if recognized_text:
+            handle_user_query(f"🎙 {recognized_text}")
+elif user_text:
+    handle_user_query(user_text)
