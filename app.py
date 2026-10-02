@@ -1,6 +1,5 @@
 import os
 import io
-import base64
 import datetime
 from io import BytesIO
 import streamlit as st
@@ -74,10 +73,12 @@ st.divider()
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
-# Auto-Playing Hindi Audio Player
+# 100% Reliable Native Streamlit Audio Player
 def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
+        # लिंक और यूआरएल आवाज़ में न पढ़ें
+        clean_text = clean_text.split("http")[0].split("▶️")[0].split("🔍")[0].strip()
         if not clean_text:
             clean_text = "यहाँ आपका उत्तर है।"
         clean_text = clean_text[:250]
@@ -87,16 +88,10 @@ def play_audio(text, autoplay=False, slow=False):
         tts.write_to_fp(sound)
         sound.seek(0)
         
-        b64_audio = base64.b64encode(sound.read()).decode("utf-8")
-        auto_attr = "autoplay" if autoplay else ""
-        audio_html = f"""
-        
-            
-        
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
-    except Exception:
-        pass
+        # Native Streamlit player with autoplay support
+        st.audio(sound, format="audio/mp3", autoplay=autoplay)
+    except Exception as e:
+        st.caption(f"Audio note: {str(e)}")
 
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
@@ -109,13 +104,12 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in creator_keywords) and any(w in p for w in ["jisne", "jisne banaya", "banaya", "uske", "unke", "arvind", "creator", "nirmata"]):
         return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
 
-    # Rule 2: Kisne banaya
+    # Rule 2: Sirf pooche ki kisne banaya
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
     # Rule 3: Live Time & Date Tool (IST)
-    if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din"]):
-        # IST offset: UTC + 5:30
+    if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
         time_str = ist_now.strftime("%I:%M %p")
@@ -195,9 +189,10 @@ for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
+            # नए रिस्पॉन्स पर अपने-आप आवाज़ बजेगी
             play_audio(msg["content"], autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
-# --- 4. Export / Download Chat (Sidebar) ---
+# --- Export / Download Chat (Sidebar) ---
 chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
 st.sidebar.download_button(
     label="📥 बातचीत डाउनलोड करें",
