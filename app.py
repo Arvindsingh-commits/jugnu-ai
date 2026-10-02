@@ -15,7 +15,7 @@ def play_audio(text):
     try:
         clean_text = text.split("```")[0].strip()
         if not clean_text:
-            clean_text = "यहाँ आपका उत्तर तैयार है।"
+            clean_text = "यहाँ आपका उत्तर है।"
         clean_text = clean_text[:250]
         
         sound = BytesIO()
@@ -29,21 +29,20 @@ def play_audio(text):
 def get_jugnu_response(prompt_text):
     system_prompt = (
         "तुम जुगनू (JUGNU) हो, एक विनम्र और सरल हिंदी AI सहायक। "
-        "यूज़र के सवाल के अनुसार केवल स्वाभाविक हिंदी या हिंग्लिश में 1 से 2 छोटे वाक्यों में उत्तर दो। "
-        "यूज़र के सवाल का सटीक जवाब दो और कोई बेतुकी बात मत बोलो।"
+        "नियम 1: अगर कोई पूछे कि तुम्हें किसने बनाया है या तुम्हारा निर्माता कौन है, तो साफ़ और गर्व से कहो कि 'मुझे अरविंद सिंह ने बनाया है।' "
+        "नियम 2: हमेशा केवल स्वाभाविक और सरल हिंदी या हिंग्लिश में 1 से 2 छोटे वाक्यों में उत्तर दो। "
+        "नियम 3: अरबी या अन्य विदेशी भाषा बिल्कुल न बोलो।"
     )
 
-    # Groq खाते से सक्रिय मॉडल्स की ताज़ा सूची प्राप्त करना
     try:
         models_data = client.models.list().data
         active_ids = [m.id for m in models_data]
-        # ऑडियो, विज़न और गार्ड मॉडल्स को छोड़कर टेक्स्ट मॉडल्स चुनें
         usable_models = [
             m for m in active_ids 
             if not any(bad in m.lower() for bad in ["whisper", "guard", "moderation", "vision"])
         ]
     except Exception as e:
-        return f"Groq Connection Error: {str(e)}"
+        return f"Groq Error: {str(e)}"
 
     last_error = ""
     for model_name in usable_models:
@@ -54,7 +53,7 @@ def get_jugnu_response(prompt_text):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=150,
+                max_tokens=200,
                 temperature=0.5
             )
             reply = completion.choices[0].message.content.strip()
@@ -74,17 +73,48 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
 
-# स्क्रीन पर पुराने मैसेज दिखाना
+# पुराने संदेश दिखाना
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# Text Input
+# माइक बॉक्स (Audio Input)
+st.write("")
+with st.container(border=True):
+    st.markdown("🎙️ **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
+    voice_input = st.audio_input("Record audio", label_visibility="collapsed")
+
+# टेक्स्ट इनपुट
 user_text = st.chat_input("यहाँ लिखकर पूछिए...")
 
-if user_text:
+# अगर आवाज़ से इनपुट दिया गया हो
+if voice_input is not None:
+    audio_bytes = voice_input.getvalue()
+    if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
+        st.session_state.last_voice = audio_bytes
+        
+        with st.spinner("आपकी आवाज़ सुनी जा रही है..."):
+            try:
+                # Groq Whisper se audio to text conversion
+                transcription = client.audio.transcriptions.create(
+                    file=("input.wav", audio_bytes),
+                    model="whisper-large-v3-turbo"
+                )
+                recognized_text = transcription.text.strip()
+            except Exception:
+                recognized_text = ""
+
+        if recognized_text:
+            st.session_state.messages.append({"role": "user", "content": f"🎙️️ {recognized_text}"})
+            with st.spinner("जुगनू सोच रहा है..."):
+                reply = get_jugnu_response(recognized_text)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+            st.rerun()
+
+# अगर लिखकर पूछा गया हो
+elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.spinner("जुगनू सोच रहा है..."):
         reply = get_jugnu_response(user_text)
