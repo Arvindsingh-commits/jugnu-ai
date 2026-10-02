@@ -21,86 +21,97 @@ if theme_choice == "Apni Photo Upload Karein":
     custom_bg_file = st.sidebar.file_uploader("Apni photo upload karein (JPG/PNG)", type=["jpg", "jpeg", "png"], key="bg_uploader")
 
 def apply_background(choice, uploaded_file):
-    bg_css = ""
+    bg_style = ""
     
     if choice == "Default White":
-        bg_css = """
-        [data-testid="stAppViewContainer"], .stApp {
+        bg_style = """
+        [data-testid="stAppViewContainer"], .stApp, section.main, .main {
             background-color: #F8F9FA !important;
             background-image: none !important;
-            color: #111111 !important;
-        }
-        [data-testid="stHeader"] {
-            background-color: rgba(248, 249, 250, 0.8) !important;
         }
         .stChatMessage {
             background-color: #FFFFFF !important;
-            border: 1px solid #E5E7EB !important;
+            border: 1px solid #E2E8F0 !important;
             border-radius: 14px !important;
-            color: #111111 !important;
+            color: #000000 !important;
         }
         """
     elif choice == "Dark Black":
-        bg_css = """
-        [data-testid="stAppViewContainer"], .stApp {
-            background-color: #0E1117 !important;
+        bg_style = """
+        [data-testid="stAppViewContainer"], .stApp, section.main, .main {
+            background-color: #0D1117 !important;
             background-image: none !important;
-            color: #FFFFFF !important;
         }
-        [data-testid="stHeader"] {
-            background-color: rgba(14, 17, 23, 0.8) !important;
+        h1, h2, h3, p, span, label, .stMarkdown {
+            color: #F0F6FC !important;
         }
         .stChatMessage {
-            background-color: #1E232F !important;
-            border: 1px solid #2D3748 !important;
+            background-color: #161B22 !important;
+            border: 1px solid #30363D !important;
             border-radius: 14px !important;
-            color: #FFFFFF !important;
+        }
+        .stChatMessage p, .stChatMessage span {
+            color: #F0F6FC !important;
         }
         """
     elif choice == "Creator Photo (Arvind & Metab)":
-        if os.path.exists("creator.jpg"):
-            with open("creator.jpg", "rb") as f:
+        found_file = None
+        for fname in ["creator.jpg", "creator.png", "creator.jpeg"]:
+            if os.path.exists(fname):
+                found_file = fname
+                break
+        
+        if found_file:
+            with open(found_file, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
-            bg_css = f"""
-            [data-testid="stAppViewContainer"], .stApp {{
+            bg_style = f"""
+            [data-testid="stAppViewContainer"], .stApp, section.main, .main {{
                 background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
                 background-size: cover !important;
                 background-position: center !important;
                 background-attachment: fixed !important;
             }}
-            [data-testid="stHeader"] {{
-                background-color: transparent !important;
+            h1, h2, h3, p, span, label, .stMarkdown {{
+                color: #FFFFFF !important;
             }}
             .stChatMessage {{
                 background-color: rgba(255, 255, 255, 0.92) !important;
                 border-radius: 14px !important;
+            }}
+            .stChatMessage p, .stChatMessage span {{
                 color: #111111 !important;
             }}
             """
         else:
-            st.sidebar.warning("GitHub par 'creator.jpg' nahi mili! Kripya pehle file upload karein.")
+            st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili! Niche se photo upload karke ya GitHub par add karke try karein.")
             
     elif choice == "Apni Photo Upload Karein" and uploaded_file is not None:
         b64 = base64.b64encode(uploaded_file.getvalue()).decode()
-        bg_css = f"""
-        [data-testid="stAppViewContainer"], .stApp {{
+        bg_style = f"""
+        [data-testid="stAppViewContainer"], .stApp, section.main, .main {{
             background-image: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") !important;
             background-size: cover !important;
             background-position: center !important;
             background-attachment: fixed !important;
         }}
-        [data-testid="stHeader"] {{
-            background-color: transparent !important;
+        h1, h2, h3, p, span, label, .stMarkdown {{
+            color: #FFFFFF !important;
         }}
         .stChatMessage {{
             background-color: rgba(255, 255, 255, 0.92) !important;
             border-radius: 14px !important;
+        }}
+        .stChatMessage p, .stChatMessage span {{
             color: #111111 !important;
         }}
         """
 
-    full_style = f""
-    st.markdown(full_style, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        
+        """,
+        unsafe_allow_html=True
+    )
 
 apply_background(theme_choice, custom_bg_file)
 
