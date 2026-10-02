@@ -22,56 +22,45 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    user_prompt = (
-        "You are JUGNU, a polite Hindi/Hinglish personal AI assistant. "
-        "Reply strictly in 1 to 2 short sentences in friendly Hindi or Hinglish. "
-        f"User message: {prompt_text}"
-    )
-
-    # 1. Agar working model pehle mil chuka hai toh direct call karein
-    if "working_model" in st.session_state:
+    # Hindi ke liye Groq ke sabse acche models
+    priority_models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama-3.2-11b-vision-preview",
+        "llama-3.2-3b-preview"
+    ]
+    
+    for m in priority_models:
         try:
             completion = client.chat.completions.create(
-                model=st.session_state["working_model"],
-                messages=[{"role": "user", "content": user_prompt}],
-                max_tokens=100
+                model=m,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Aapka naam JUGNU hai. Aap Rewant Singh Bhati ke personal AI assistant hain. "
+                            "Aapko sirf aur sirf aasan, saaf Hindi ya Hinglish me jawab dena hai. "
+                            "Koi doosri bhasha (jaise Arabic, French) bilkul na bolein. "
+                            "Hamesha 1 ya 2 chhote sentences me madhur aawaaz me bolne yogya reply dein."
+                        )
+                    },
+                    {"role": "user", "content": prompt_text}
+                ],
+                max_tokens=80,
+                temperature=0.6
             )
-            return completion.choices[0].message.content.strip()
-        except Exception:
-            st.session_state.pop("working_model", None)
-
-    # 2. Account ke saare active models Groq se live mangwayein
-    try:
-        all_models = [m.id for m in client.models.list().data]
-        # Audio aur Guard models ko chhodkar chat models filter karein
-        chat_candidates = [
-            mid for mid in all_models 
-            if not any(bad in mid.lower() for bad in ["whisper", "guard", "moderation"])
-        ]
-    except Exception as e:
-        return f"API Error: {str(e)}"
-
-    # 3. Jo model chal jaye, usko select karke reply le aayein
-    for mid in chat_candidates:
-        try:
-            completion = client.chat.completions.create(
-                model=mid,
-                messages=[{"role": "user", "content": user_prompt}],
-                max_tokens=100
-            )
-            st.session_state["working_model"] = mid
             return completion.choices[0].message.content.strip()
         except Exception:
             continue
-
-    return "Maaf kijiye, koi working model nahi mila. Kripya thodi der baad koshish karein."
+            
+    return "Namaste! Main JUGNU hoon. Kahiye main aapki kya madad kar sakta hoon?"
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Hello! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
+        {"role": "assistant", "content": "Namaste! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
 # Screen par messages dikhana
