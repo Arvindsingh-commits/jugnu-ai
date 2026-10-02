@@ -9,7 +9,6 @@ import streamlit as st
 from groq import Groq
 from gtts import gTTS
 from pypdf import PdfReader
-from duckduckgo_search import DDGS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
@@ -80,7 +79,7 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
     conn.close()
     return data
 
-# --- Persistent Login State Management ---
+# --- Persistent Login State ---
 query_user = st.query_params.get("user", None)
 if query_user and ("logged_in_user" not in st.session_state or not st.session_state.logged_in_user):
     user_row = db_query("SELECT username, name, plan_type FROM users WHERE username = ?", (query_user,), fetchone=True)
@@ -100,17 +99,16 @@ if "user_plan" not in st.session_state:
 if "current_session_id" not in st.session_state:
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "राम राम सा! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
 if "uploaded_doc_text" not in st.session_state:
     st.session_state.uploaded_doc_text = ""
 
-# Keep user locked in URL query params so refresh never logs out
 st.query_params["user"] = st.session_state.logged_in_user
 
 is_hi = (st.session_state.app_lang == "Hindi")
 badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"
 
-# --- Sidebar Header ---
+# --- Sidebar ---
 st.sidebar.write(f"👤 **{st.session_state.logged_in_name}** ({badge})")
 
 col_top1, col_top2 = st.sidebar.columns(2)
@@ -118,6 +116,7 @@ with col_top1:
     if st.button("➕ नई चैट", use_container_width=True):
         st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         st.session_state.messages = [{"role": "assistant", "content": f"राम राम {st.session_state.logged_in_name} जी! नई चैट तैयार है।"}]
+        st.session_state.uploaded_doc_text = ""
         st.rerun()
 with col_top2:
     if st.button("🚪 लॉगआउट", use_container_width=True):
@@ -129,59 +128,27 @@ with col_top2:
 
 st.sidebar.markdown("---")
 
-# 1. File Upload / PDF Reader (Direct visible expander)
-with st.sidebar.expander("📄 फ़ाइल / PDF अपलोड करें", expanded=True):
-    uploaded_file = st.file_uploader("PDF या TXT यहाँ डालें:", type=["pdf", "txt"], key="side_file_uploader")
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.name.endswith(".pdf"):
-                reader = PdfReader(uploaded_file)
-                text = "\n".join([page.extract_text() or "" for page in reader.pages])
-            else:
-                text = uploaded_file.read().decode("utf-8")
-            st.session_state.uploaded_doc_text = text[:4000]
-            st.success("✅ फ़ाइल सेव हो गई! अब इससे जुड़े सवाल पूछें।")
-        except Exception as e:
-            st.error(f"फ़ाइल पढ़ने में गड़बड़: {e}")
-
-# 2. Live Internet Search Toggle
-with st.sidebar.expander("🌐 लाइव इंटरनेट सर्च व न्यूज़", expanded=False):
-    enable_live_search = st.checkbox("लाइव वेब सर्च ऑन रखें (Live Search ON)", value=True)
-    st.caption("ऑन रखने पर ताज़ा खबरें, मौसम व ताज़ा रेट्स इंटरनेट से खोजेगा।")
-
-# 3. Tone & Language Settings
-with st.sidebar.expander("⚙️ सेटिंग्स और अंदाज़", expanded=False):
-    chosen_lang = st.selectbox("भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
+with st.sidebar.expander("⚙️ सेटिंग्स (Settings)", expanded=False):
+    chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
         st.session_state.app_lang = new_lang
         st.rerun()
 
     bot_mode = st.selectbox(
-        "अंदाज़ (Persona):", 
-        ["मारवाड़ी / राजस्थानी (देसी)", "दोस्ताना (Friendly)", "शिक्षक (Teacher)", "कहानीकार (Storyteller)"]
+        "अंदाज़ (Mode):", 
+        ["मारवाड़ी / राजस्थानी", "दोस्ताना", "शिक्षक", "कहानीकार"]
     )
     voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
     is_slow_voice = (voice_speed == "धीमी")
 
-# 4. Smart Reminders
-with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर", expanded=False):
-    r_text = st.text_input("काम लिखें:", placeholder="उदा. शाम 6 बजे कॉल")
-    r_time = st.time_input("समय चुनें:", value=datetime.time(18, 0))
-    if st.button("⏰ रिमाइंडर सेट करें", use_container_width=True):
-        if r_text.strip():
-            db_query("INSERT INTO notes (username, note, remind_time) VALUES (?, ?, ?)", 
-                     (st.session_state.logged_in_user, r_text.strip(), r_time.strftime("%H:%M")), commit=True)
-            st.success("रिमाइंडर सुरक्षित!")
-            st.rerun()
-
-# 5. Search Chat & History
-st.sidebar.markdown("---")
+# Chat History
 st.sidebar.subheader("🔍 चैट खोजें")
 search_term = st.sidebar.text_input("ढूँढें...", placeholder="उदा. मौसम, सवाल").strip().lower()
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
 
 if all_convos:
+    st.sidebar.markdown("💬 **पुरानी बातचीत (History):**")
     for s_id, s_title in all_convos:
         if search_term and search_term not in s_title.lower():
             continue
@@ -192,7 +159,7 @@ if all_convos:
                 st.session_state.messages = [{"role": r, "content": c} for r, c in loaded_msgs]
             st.rerun()
 
-# --- Main Dashboard Header ---
+# --- Main Page Header ---
 c1, c2 = st.columns([1, 4])
 with c1:
     creator_img = None
@@ -229,18 +196,10 @@ def play_audio(text, autoplay=False, slow=False, lang="hi"):
     except Exception:
         pass
 
-def live_web_search(query):
-    try:
-        results = DDGS().text(query, max_results=3)
-        if results:
-            return "\n".join([r.get("body", "") for r in results])
-    except Exception:
-        pass
-    return ""
-
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
 
+    # Image gen trigger
     if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image"]) and any(a in p for a in ["banao", "बनाओ", "dikhao", "generate"]):
         query = p.replace("photo", "").replace("banao", "").replace("फोटो", "").replace("बनाओ", "").strip()
         if not query:
@@ -248,15 +207,11 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         img_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true"
         return f"IMAGE_GEN:{img_url}|{query}"
 
-    search_context = ""
-    if enable_live_search or any(k in p for k in ["live", "आज का", "ताजा", "खबर", "समाचार", "news", "भाव", "मंडी"]):
-        search_context = live_web_search(prompt_text)
-
     if "मारवाड़ी" in mode_name or "marwadi" in p:
         sys_txt = (
             f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै मीठी राजस्थानी/मारवाड़ी मिश्रित हिंदी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोलूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
+            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोल सकूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
         )
     elif lang == "Hindi":
         sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
@@ -264,12 +219,8 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         sys_txt = f"You are JUGNU AI, created by Arvind Singh. Respond naturally in 1-2 clear English sentences."
 
     if st.session_state.uploaded_doc_text:
-        sys_txt += f"\n\nयूज़र की अपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nसवालों का जवाब इसी फ़ाइल के आधार पर दें।"
+        sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
 
-    if search_context:
-        sys_txt += f"\n\nइंटरनेट से ताज़ा सर्च जानकारी:\n{search_context}\nताज़ा जानकारी के आधार पर उत्तर दें।"
-
-    # Guaranteed official Groq chat completion model
     try:
         res = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -311,15 +262,34 @@ if r1[3].button("😄 चुटकुला", use_container_width=True): quick_p
 if r2[0].button("🎨 फोटो", use_container_width=True): quick_prompt = "photo banao Jaisalmer Fort"
 if r2[1].button("🎯 क्विज़", use_container_width=True): quick_prompt = "Mujhse Rajasthan se juda samanya gyan ka sawal poocho."
 if r2[2].button("🍎 सेहत", use_container_width=True): quick_prompt = "Aaj ke liye ek health tip batao."
-if r2[3].button("📰 खबर", use_container_width=True): quick_prompt = "aaj ki taza khabar batao"
+if r2[3].button("💬 मारवाड़ी", use_container_width=True): quick_prompt = "kya tum marwadi bol sakti ho"
 
-# Mic and Input
+# Mic Box
 st.write("")
 _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-user_text = st.chat_input("यहाँ लिखकर, माइक से या फ़ाइल अपलोड करके पूछिए...")
+# --- ChatGPT Style File Attachment Area (Directly above input) ---
+with st.expander("📎 फ़ाइल या फ़ोटो अटैच करें (ChatGPT Style)", expanded=False):
+    uploaded_file = st.file_uploader("PDF, TXT या फ़ोटो चुनें:", type=["pdf", "txt", "png", "jpg", "jpeg"], key="main_chat_uploader")
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.name.endswith(".pdf"):
+                reader = PdfReader(uploaded_file)
+                extracted = "\n".join([page.extract_text() or "" for page in reader.pages])
+                st.session_state.uploaded_doc_text = extracted[:4000]
+                st.success(f"📄 '{uploaded_file.name}' अटैच हो गई! अब नीचे सवाल पूछें।")
+            elif uploaded_file.name.endswith(".txt"):
+                st.session_state.uploaded_doc_text = uploaded_file.read().decode("utf-8")[:4000]
+                st.success(f"📄 '{uploaded_file.name}' अटैच हो गई!")
+            else:
+                st.image(uploaded_file, caption=f"अटैच फ़ोटो: {uploaded_file.name}", width=200)
+                st.success(f"🖼 '{uploaded_file.name}' अटैच हो गई!")
+        except Exception as e:
+            st.error(f"फ़ाइल लोड करने में समस्या: {e}")
+
+user_text = st.chat_input("यहाँ लिखकर, ऊपर माइक से या 📎 फ़ाइल जोड़कर पूछिए...")
 
 def handle_user_query(query_text):
     if not st.session_state.current_session_id:
