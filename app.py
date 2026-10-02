@@ -8,21 +8,32 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# --- Creator Profile Banner (अरविंद सिंह जी की नई फोटो और नाम) ---
+# --- Creator Profile Banner (Auto Image Detector) ---
 col1, col2 = st.columns([1, 4])
 with col1:
     creator_img = None
-    # creator 1 और अन्य सभी नामों की जाँच
-    possible_names = [
-        "creator 1.jpg", "creator 1.png", "creator 1.jpeg", "creator 1.JPG", "creator 1.PNG",
-        "creator1.jpg", "creator1.png", "creator1.jpeg", "creator1.JPG", "creator1.PNG",
-        "creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"
+    # 1. Sabhi possible spellings aur formats check karein
+    check_list = [
+        "creater 1.jpg", "creater 1.png", "creater 1.jpeg", "creater 1.webp",
+        "creater1.jpg", "creater1.png", "creater1.jpeg",
+        "creater.jpg", "creater.png", "creater.jpeg",
+        "creator 1.jpg", "creator 1.png", "creator 1.jpeg", "creator 1.webp",
+        "creator1.jpg", "creator1.png", "creator1.jpeg",
+        "creator.jpg", "creator.png", "creator.jpeg"
     ]
-    for name in possible_names:
-        if os.path.exists(name):
-            creator_img = name
+    for fname in check_list:
+        if os.path.exists(fname):
+            creator_img = fname
             break
             
+    # 2. Agar upar na mile toh repository me koi bhi image file dhoondhein
+    if not creator_img:
+        for f in os.listdir("."):
+            lower_f = f.lower()
+            if any(lower_f.endswith(ext) for ext in [".jpg", ".png", ".jpeg", ".webp"]):
+                creator_img = f
+                break
+
     if creator_img:
         st.image(creator_img, width=95)
     else:
