@@ -8,24 +8,24 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# --- Theme aur Background Settings (Sidebar) ---
+# --- Theme & Background Sidebar ---
 st.sidebar.title("🎨 JUGNU Theme Settings")
 theme_choice = st.sidebar.selectbox(
     "Background chunein:",
-    ["Default White", "Dark Black", "Creator Photo (Arvind & Metab)", "Apni Photo Upload Karein"],
+    ["Default White", "Dark Black", "Creator Photo", "Apni Photo Upload Karein"],
     key="theme_selection"
 )
 
 custom_bg_file = None
 if theme_choice == "Apni Photo Upload Karein":
-    custom_bg_file = st.sidebar.file_uploader("Apni photo upload karein (JPG/PNG)", type=["jpg", "jpeg", "png"], key="bg_uploader")
+    custom_bg_file = st.sidebar.file_uploader("Photo chunein (JPG/PNG)", type=["jpg", "jpeg", "png"], key="bg_uploader")
 
 def apply_background(choice, uploaded_file):
     bg_css = ""
     
     if choice == "Default White":
         bg_css = """
-        [data-testid="stAppViewContainer"], .stApp, [data-testid="stMainBlockContainer"], section.main {
+        html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stHeader"], [data-testid="stMainBlockContainer"] {
             background-color: #F8F9FA !important;
             background-image: none !important;
         }
@@ -33,12 +33,12 @@ def apply_background(choice, uploaded_file):
             background-color: #FFFFFF !important;
             border: 1px solid #E2E8F0 !important;
             border-radius: 14px !important;
-            color: #000000 !important;
+            color: #111111 !important;
         }
         """
     elif choice == "Dark Black":
         bg_css = """
-        [data-testid="stAppViewContainer"], .stApp, [data-testid="stMainBlockContainer"], section.main {
+        html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stHeader"], [data-testid="stMainBlockContainer"] {
             background-color: #0D1117 !important;
             background-image: none !important;
         }
@@ -54,7 +54,7 @@ def apply_background(choice, uploaded_file):
             color: #F0F6FC !important;
         }
         """
-    elif choice == "Creator Photo (Arvind)":
+    elif choice == "Creator Photo":
         found_file = None
         for fname in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
             if os.path.exists(fname):
@@ -63,18 +63,15 @@ def apply_background(choice, uploaded_file):
         
         if found_file:
             with open(found_file, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
+                b64 = base64.b64encode(f.read()).decode("utf-8")
             bg_css = f"""
             [data-testid="stAppViewContainer"], .stApp {{
-                background-image: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/png;base64,{b64}") !important;
+                background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") no-repeat center center fixed !important;
                 background-size: cover !important;
-                background-position: center !important;
-                background-attachment: fixed !important;
-                background-repeat: no-repeat !important;
             }}
-            section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
-                background: transparent !important;
+            [data-testid="stHeader"], [data-testid="stMainBlockContainer"], section.main {{
                 background-color: transparent !important;
+                background: transparent !important;
             }}
             h1, h2, h3, p, span, label, .stMarkdown {{
                 color: #FFFFFF !important;
@@ -89,20 +86,17 @@ def apply_background(choice, uploaded_file):
             """
         else:
             st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili!")
-            
+
     elif choice == "Apni Photo Upload Karein" and uploaded_file is not None:
-        b64 = base64.b64encode(uploaded_file.getvalue()).decode()
+        b64 = base64.b64encode(uploaded_file.getvalue()).decode("utf-8")
         bg_css = f"""
         [data-testid="stAppViewContainer"], .stApp {{
-            background-image: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/png;base64,{b64}") !important;
+            background: linear-gradient(rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.65)), url("data:image/jpeg;base64,{b64}") no-repeat center center fixed !important;
             background-size: cover !important;
-            background-position: center !important;
-            background-attachment: fixed !important;
-            background-repeat: no-repeat !important;
         }}
-        section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
-            background: transparent !important;
+        [data-testid="stHeader"], [data-testid="stMainBlockContainer"], section.main {{
             background-color: transparent !important;
+            background: transparent !important;
         }}
         h1, h2, h3, p, span, label, .stMarkdown {{
             color: #FFFFFF !important;
@@ -147,8 +141,8 @@ def play_audio(text):
 def get_jugnu_response(prompt_text):
     system_prompt = (
         "Tum JUGNU ho, ek vinamra, smart aur helpful Hindi AI assistant. "
-        "CRITICAL RULE 1: Agar koi pooche ki tumhe kisne banaya hai, toh kaho: 'Mujhe Arvind Singh aur Metab Singh ne banaya hai.' "
-        "CRITICAL RULE 2: Hamesha saral Hindi ya Hinglish me 1-2 sentences me jawab do. "
+        "CRITICAL RULE 1: Agar koi pooche ki tumhe kisne banaya hai ya tumhara creator kaun hai, toh bina dare saaf kaho: 'Mujhe Arvind Singh ne banaya hai.' "
+        "CRITICAL RULE 2: Hamesha saral Hindi ya Hinglish me 1-2 sentences me hi seedha jawab do. "
         "CRITICAL RULE 3: Arabic ya koi anya bhasha bilkul mat bolo."
     )
 
@@ -172,7 +166,7 @@ def get_jugnu_response(prompt_text):
                     {"role": "user", "content": prompt_text}
                 ],
                 max_tokens=200,
-                temperature=0.5
+                temperature=0.4
             )
             reply = completion.choices[0].message.content.strip()
             if reply:
@@ -191,23 +185,23 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Namaste! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
     ]
 
-# Messages display
+# Purane messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg["role"] == "assistant":
             play_audio(msg["content"])
 
-# Voice Recording Box
+# Voice recording box
 st.write("")
 with st.container(border=True):
     st.markdown("🎙️ **JUGNU se bolkar poochne ke liye neeche record karein:**")
     voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
 
-# Text Input Box
+# Text input
 user_text = st.chat_input("Yahan likh kar poochiye...")
 
-# Handle Voice Input
+# Voice process
 if voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
@@ -233,7 +227,7 @@ if voice_input is not None:
             st.session_state.messages.append({"role": "assistant", "content": reply})
             st.rerun()
 
-# Handle Text Input
+# Text process
 elif user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.spinner("JUGNU soch raha hai..."):
