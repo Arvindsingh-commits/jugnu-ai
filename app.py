@@ -22,21 +22,23 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
+    # कड़ा सिस्टम निर्देश: केवल हिंदी या हिंग्लिश
     system_instruction = (
-        "Aapka naam JUGNU hai. Aap ek smart, polite Hindi AI assistant hain. "
-        "User ke sawal ka seedha, natural Hindi ya Hinglish me 1-2 line me reply dein."
+        "You are JUGNU, an AI assistant. "
+        "CRITICAL RULE: You must ALWAYS respond ONLY in pure Hindi (Devanagari) or natural conversational Hinglish. "
+        "DO NOT use Arabic, Persian, or any other foreign language under any circumstances. "
+        "Keep your reply helpful, friendly, and within 2 to 4 sentences."
     )
     
-    # Live available models check karein
-    try:
-        model_list = [m.id for m in client.models.list().data]
-        # Text conversation models filter karein (whisper/audio chhod kar)
-        usable_models = [m for m in model_list if not any(x in m.lower() for x in ["whisper", "guard", "moderation", "vision"])]
-    except Exception as e:
-        return f"Model List Error: {str(e)}"
-
-    last_error = ""
-    for model_id in usable_models:
+    # सबसे स्थिर और अच्छी हिंदी समझने वाले मॉडल्स
+    preferred_models = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama-3.2-3b-preview",
+        "llama-3.2-1b-preview"
+    ]
+    
+    for model_id in preferred_models:
         try:
             completion = client.chat.completions.create(
                 model=model_id,
@@ -44,25 +46,46 @@ def get_jugnu_response(prompt_text):
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=120,
-                temperature=0.7
+                max_tokens=250,
+                temperature=0.5
             )
-            return completion.choices[0].message.content.strip()
-        except Exception as err:
-            last_error = str(err)
+            reply = completion.choices[0].message.content.strip()
+            if reply:
+                return reply
+        except Exception:
             continue
 
-    return f"Groq Error: {last_error}" if last_error else "Koi active model nahi mila."
+    # अगर ऊपर का कोई मॉडल न चले तो ऑटो-लिस्ट में से कोशिश करें
+    try:
+        model_list = [m.id for m in client.models.list().data if "llama" in m.id.lower() and "guard" not in m.id.lower()]
+        for m_id in model_list:
+            try:
+                completion = client.chat.completions.create(
+                    model=m_id,
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": prompt_text}
+                    ],
+                    max_tokens=250,
+                    temperature=0.5
+                )
+                return completion.choices[0].message.content.strip()
+            except Exception:
+                continue
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+    return "माफ़ कीजिए, अभी जवाब देने में समस्या आ रही है। कृपया दोबारा पूछें।"
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Namaste! Main JUGNU hoon. Kahiye aaj main aapki kya madad kar sakta hoon?"}
+        {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
 
-# Screen par messages dikhana
+# स्क्रीन पर पुराने मैसेज दिखाना
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
@@ -70,11 +93,11 @@ for msg in st.session_state.messages:
             play_audio(msg["content"])
 
 # Text Input
-user_text = st.chat_input("Yahan likh kar poochiye...")
+user_text = st.chat_input("यहाँ लिखकर पूछिए...")
 
 if user_text:
     st.session_state.messages.append({"role": "user", "content": user_text})
-    with st.spinner("JUGNU soch raha hai..."):
+    with st.spinner("जुगनू सोच रहा है..."):
         reply = get_jugnu_response(user_text)
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
