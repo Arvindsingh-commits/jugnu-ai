@@ -147,7 +147,7 @@ if not st.session_state.logged_in_user:
                         st.rerun()
     st.stop()
 
-# --- 2. Main Dashboard (Logged In) ---
+# --- 2. Main Dashboard ---
 is_hi = (st.session_state.app_lang == "Hindi")
 
 # Sidebar Header & User Profile
@@ -159,7 +159,7 @@ if st.sidebar.button("🚪 लॉगआउट (Logout)" if is_hi else "🚪 Logo
     st.session_state.messages = []
     st.rerun()
 
-# Button for New Page / New Chat (ChatGPT Style)
+# Button for New Page / New Chat
 if st.sidebar.button("➕ नई चैट (+ New Chat)" if is_hi else "➕ New Chat", use_container_width=True):
     st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     welcome_text = f"नमस्ते {st.session_state.logged_in_name} जी! नया पेज तैयार है। कहिए क्या मदद करूँ?" if is_hi else f"Hello {st.session_state.logged_in_name}! New chat started. How can I assist?"
@@ -168,7 +168,7 @@ if st.sidebar.button("➕ नई चैट (+ New Chat)" if is_hi else "➕ New 
 
 st.sidebar.markdown("---")
 
-# Settings in Sidebar (Language & Modes)
+# Settings in Sidebar
 with st.sidebar.expander("⚙️ सेटिंग्स (Settings)" if is_hi else "⚙️ Settings", expanded=False):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
@@ -183,13 +183,12 @@ with st.sidebar.expander("⚙️ सेटिंग्स (Settings)" if is_hi e
     voice_speed = st.radio("आवाज़ की गति:" if is_hi else "Voice Speed:", ["सामान्य", "धीमी"] if is_hi else ["Normal", "Slow"])
     is_slow_voice = (voice_speed in ["धीमी", "Slow"])
 
-# Search Chat & History in Sidebar (ChatGPT Style)
+# Search Chat & History in Sidebar
 st.sidebar.subheader("🔍 चैट खोजें (Search Chat)" if is_hi else "🔍 Search Chat")
 search_term = st.sidebar.text_input("ढूँढें..." if is_hi else "Search chats...", placeholder="उदा. मौसम, सवाल" if is_hi else "Search keyword").strip().lower()
 
 st.sidebar.markdown("💬 **पुरानी बातचीत (History):**" if is_hi else "💬 **Chat History:**")
 
-# Fetch user's conversation sessions
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
 
 if all_convos:
@@ -338,9 +337,32 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     else:
         sys_txt = f"You are JUGNU AI, created by Arvind Singh. The user is {st.session_state.logged_in_name}. Respond naturally in 1-2 clear English sentences."
 
+    # Dynamic model detection: account me available pehle working model ko choose karega
+    available_model_ids = []
+    try:
+        models_data = client.models.list()
+        available_model_ids = [m.id for m in models_data.data]
+    except Exception:
+        pass
+
+    preferred_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
+    model_to_use = "llama-3.1-8b-instant"
+
+    for pm in preferred_models:
+        if pm in available_model_ids:
+            model_to_use = pm
+            break
+    else:
+        if available_model_ids:
+            # Fallback to any text chat model
+            for mid in available_model_ids:
+                if "whisper" not in mid:
+                    model_to_use = mid
+                    break
+
     try:
         res = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=model_to_use,
             messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
             max_tokens=150,
             temperature=0.4
