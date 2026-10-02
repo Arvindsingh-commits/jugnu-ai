@@ -10,7 +10,7 @@ from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 
-# --- UI Styling ---
+# --- Custom Styling: Compact Mic & Sleek Pill Buttons ---
 st.markdown("""
 
 """, unsafe_allow_html=True)
@@ -251,7 +251,7 @@ for i, msg in enumerate(st.session_state.messages):
             if msg["role"] == "assistant":
                 play_audio(content, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
-# --- 8 Quick Suggestion Buttons ---
+# --- 8 Sleek Quick Suggestion Pills ---
 st.write("")
 st.caption("💡 **त्वरित सुझाव:**")
 row1 = st.columns(4)
@@ -276,11 +276,11 @@ if row2[2].button("🍎 सेहत", use_container_width=True):
 if row2[3].button("📝 नोट्स", use_container_width=True):
     quick_prompt = "mere notes batao"
 
-# --- Audio Input ---
+# --- Compact Centered Mic Box ---
 st.write("")
 voice_input = st.audio_input("माइक से बोलें", key="jugnu_mic_box", label_visibility="collapsed")
 
-# --- Text Input ---
+# --- Native Sticky Bottom Chat Input ---
 user_text = st.chat_input("यहाँ लिखकर या ऊपर माइक से पूछिए...")
 
 def handle_user_query(query_text):
