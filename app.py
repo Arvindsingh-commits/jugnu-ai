@@ -10,7 +10,11 @@ from groq import Groq
 from gtts import gTTS
 
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
-st.markdown("", unsafe_allow_html=True)
+
+# --- Custom Styling: Compact ChatGPT-like Input & Buttons ---
+st.markdown("""
+
+""", unsafe_allow_html=True)
 
 # --- Session States ---
 if "messages" not in st.session_state:
@@ -48,12 +52,12 @@ if st.session_state.personal_notes:
     st.sidebar.write("**आपके काम:**")
     for idx, note in enumerate(st.session_state.personal_notes):
         st.sidebar.markdown(f"{idx+1}. {note}")
-    if st.sidebar.button("🗑️ सारे नोट साफ़ करें", use_container_width=True):
+    if st.sidebar.button("🗑 सारे नोट साफ़ करें", use_container_width=True):
         st.session_state.personal_notes = []
         st.rerun()
 
 st.sidebar.markdown("---")
-if st.sidebar.button("🗑️ पूरी चैट साफ़ करें", use_container_width=True):
+if st.sidebar.button("🗑 पूरी चैट साफ़ करें", use_container_width=True):
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
     ]
@@ -85,13 +89,13 @@ with col1:
                 break
 
     if creator_img:
-        st.image(creator_img, width=95)
+        st.image(creator_img, width=80)
     else:
         st.markdown("### 👑")
 
 with col2:
-    st.markdown("### ✨ JUGNU AI Assistant")
-    st.caption("निर्माता: **अरविंद सिंह** | आपका पर्सनल स्मार्ट साथी")
+    st.markdown("### ✨ JUGNU AI")
+    st.caption("निर्माता: **अरविंद सिंह** | पर्सनल स्मार्ट साथी")
 
 st.divider()
 
@@ -102,7 +106,7 @@ client = Groq(api_key=api_key)
 def play_audio(text, autoplay=False, slow=False):
     try:
         clean_text = text.split("```")[0].strip()
-        clean_text = clean_text.split("http")[0].split("▶️")[0].split("🔍")[0].strip()
+        clean_text = clean_text.split("http")[0].split("▶")[0].split("🔍")[0].strip()
         if not clean_text or clean_text.startswith("IMAGE_GEN:"):
             return
         clean_text = clean_text[:250]
@@ -153,35 +157,34 @@ def fetch_image_from_prompt(prompt_text):
         clean = clean.replace(w, "")
     clean = clean.strip()
     
-    # Prompt translation / enhancement
     if "jaisalmer" in clean or "जैसलमेर" in clean:
-        query = "majestic golden Jaisalmer fort in the Thar desert rajasthan high quality photography"
-        caption = "जैसलमेर का किला (Jaisalmer Fort)"
+        query = "golden majestic Jaisalmer fort Thar desert Rajasthan photography"
+        caption = "जैसलमेर फोर्ट"
     elif "bullet" in clean or "bike" in clean:
-        query = "Royal Enfield bullet motorcycle parked near desert dunes 4k"
+        query = "Royal Enfield bullet bike parked in golden sands desert"
         caption = "रॉयल एनफील्ड बुलेट"
     elif "desert" in clean or "रेगिस्तान" in clean:
-        query = "beautiful Thar desert golden sand dunes rajasthan sunset"
+        query = "beautiful Thar desert golden sand dunes rajasthan"
         caption = "थार रेगिस्तान"
     else:
-        query = clean if clean else "beautiful palace in Rajasthan India 4k"
+        query = clean if clean else "beautiful Rajasthan palace landscape"
         caption = clean if clean else "सुंदर राजस्थान"
 
     encoded = urllib.parse.quote(query)
-    image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=500&nologo=true&seed=42"
+    image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=500&nologo=true"
     return image_url, caption
 
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    # Image Generation Check
+    # Image check
     image_keywords = ["photo", "फोटो", "तस्वीर", "tasveer", "image", "चित्र"]
     action_keywords = ["banao", "बनाओ", "बनाकर", "banakar", "dikhao", "दिखाओ", "generate", "create", "चाहिए"]
     if any(k in p for k in image_keywords) and any(a in p for a in action_keywords):
         img_url, cap = fetch_image_from_prompt(prompt_text)
         return f"IMAGE_GEN:{img_url}|{cap}"
 
-    # Creator Details
+    # Creator details
     creator_keywords = [
         "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
         "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
@@ -204,13 +207,12 @@ def get_jugnu_response(prompt_text, mode_name):
     if math_ans:
         return math_ans
 
-    # Live Time & Date
+    # Live time
     if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
         time_str = ist_now.strftime("%I:%M %p")
         date_str = ist_now.strftime("%d-%m-%Y")
-        
         days_hindi = {
             "Monday": "सोमवार", "Tuesday": "मंगलवार", "Wednesday": "बुधवार",
             "Thursday": "गुरुवार", "Friday": "शुक्रवार", "Saturday": "शनिवार", "Sunday": "रविवार"
@@ -228,7 +230,6 @@ def get_jugnu_response(prompt_text, mode_name):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
-    # LLM Chat
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -283,60 +284,45 @@ for i, msg in enumerate(st.session_state.messages):
             img_url = parts[0]
             cap = parts[1] if len(parts) > 1 else "AI Photo"
             
-            # Fetch directly from backend so it loads immediately on screen
             try:
-                img_data = requests.get(img_url, timeout=15).content
-                st.image(img_data, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
+                headers = {"User-Agent": "Mozilla/5.0"}
+                resp = requests.get(img_url, headers=headers, timeout=12)
+                if resp.status_code == 200:
+                    st.image(resp.content, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
+                else:
+                    st.image(img_url, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
             except Exception:
-                st.markdown(f"🎨 **{cap}**")
-                st.markdown(f"[![फोटो लोड हो रही है]({img_url})]({img_url})")
+                st.image(img_url, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
 
-            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
+            st.markdown(f"📥 [फोटो डाउनलोड करें]({img_url})")
         else:
             st.markdown(content)
             if msg["role"] == "assistant":
                 play_audio(content, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
 
-# Sidebar Chat Export
-chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
-st.sidebar.download_button(
-    label="📥 बातचीत डाउनलोड करें",
-    data=chat_text,
-    file_name="jugnu_chat_history.txt",
-    mime="text/plain",
-    use_container_width=True
-)
-
-# Quick Suggestion Buttons
+# --- Compact 4-Pill Quick Buttons (Single Small Line) ---
 st.write("")
-st.markdown("💡 **त्वरित सवाल (Quick Tap):**")
-q_row1 = st.columns(4)
-q_row2 = st.columns(4)
+q_cols = st.columns(4)
 quick_prompt = None
 
-if q_row1[0].button("👑 निर्माता कौन है?", use_container_width=True):
+if q_cols[0].button("👑 निर्माता", use_container_width=True):
     quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
+if q_cols[1].button("⏰ समय", use_container_width=True):
     quick_prompt = "Abhi kya samay hua hai?"
-if q_row1[2].button("🎨 फोटो बनाओ", use_container_width=True):
+if q_cols[2].button("🎨 फोटो", use_container_width=True):
     quick_prompt = "photo banao Jaisalmer Fort"
-if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
+if q_cols[3].button("😄 चुटकुला", use_container_width=True):
     quick_prompt = "Ek mazedaar chhota chutkula sunao"
 
-if q_row2[0].button("🎯 क्विज़ खेलें", use_container_width=True):
-    quick_prompt = "Mujhse Rajasthan ya Bharat se juda ek rochak samanya gyan ka sawal poocho jisme 4 vikalp hon."
-if q_row2[1].button("🍎 सेहत टिप", use_container_width=True):
-    quick_prompt = "Aaj ke liye ek chhota aur faydemand health tip batao."
-if q_row2[2].button("📝 मेरे नोट्स", use_container_width=True):
-    quick_prompt = "mere notes batao"
-if q_row2[3].button("📖 एक सुविचार", use_container_width=True):
-    quick_prompt = "Aaj ka achha suvichar batao"
+# --- Fitted ChatGPT Style Input Box (Text + Mic side-by-side) ---
+st.write("")
+in_col1, in_col2 = st.columns([5, 1])
 
-with st.container(border=True):
-    st.markdown("🎙 **JUGNU से बोलकर पूछने के लिए नीचे रिकॉर्ड करें:**")
-    voice_input = st.audio_input("Record audio", key="jugnu_mic", label_visibility="collapsed")
+with in_col1:
+    user_text = st.chat_input("यहाँ लिखकर या बोलकर पूछिए...")
 
-user_text = st.chat_input("यहाँ लिखकर पूछिए या फोटो बनाने को कहिए...")
+with in_col2:
+    voice_input = st.audio_input("mic", key="jugnu_compact_mic", label_visibility="collapsed")
 
 def handle_user_query(query_text):
     st.session_state.messages.append({"role": "user", "content": query_text})
@@ -347,10 +333,10 @@ def handle_user_query(query_text):
     if not reply.startswith("IMAGE_GEN:"):
         if "youtube" in q_low:
             search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
-            reply += f"\n\n▶️️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
+            reply += f"\n\n▶ [YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
         elif "google" in q_low:
             search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
-            reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
+            reply += f"\n\n🔍 [Google पर खोजें](https://www.google.com/search?q={search_term})"
 
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.rerun()
@@ -361,7 +347,7 @@ elif voice_input is not None:
     audio_bytes = voice_input.getvalue()
     if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
         st.session_state.last_voice = audio_bytes
-        with st.spinner("आपकी आवाज़ सुनी जा रही है..."):
+        with st.spinner("आवाज़ सुनी जा रही है..."):
             recognized_text = ""
             try:
                 audio_file = io.BytesIO(audio_bytes)
