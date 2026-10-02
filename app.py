@@ -13,7 +13,6 @@ client = Groq(api_key=api_key)
 
 def play_audio(text):
     try:
-        # कोड या लंबे उत्तर होने पर केवल शुरुआती पंक्तियों की आवाज़ बनेगी
         clean_text = text.split("```")[0].strip()
         if not clean_text:
             clean_text = "यहाँ आपका उत्तर तैयार है।"
@@ -28,21 +27,26 @@ def play_audio(text):
         pass
 
 def get_jugnu_response(prompt_text):
-    # केवल उच्च गुणवत्ता वाले मॉडल जो हिंदी बेहतर समझते हैं
-    reliable_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-70b-versatile"
-    ]
-    
     system_prompt = (
-        "तुम जुगनू (JUGNU) नाम के एक बुद्धिमान और विनम्र AI सहायक हो। "
-        "तुम्हारा काम केवल स्वाभाविक, शुद्ध और सरल हिंदी या हिंग्लिश में बातचीत करना है। "
-        "कोई बेतुकी बात या निर्देश न दोहराएँ। "
-        "यदि यूजर 'bye' या विदाई कहे, तो विनम्रता से 'अलविदा! अपना ध्यान रखिएगा।' जैसा संक्षिप्त उत्तर दो। "
-        "सामान्य बातचीत में 1 से 2 छोटे वाक्यों में ही उत्तर दो।"
+        "तुम जुगनू (JUGNU) हो, एक विनम्र और सरल हिंदी AI सहायक। "
+        "यूज़र के सवाल के अनुसार केवल स्वाभाविक हिंदी या हिंग्लिश में 1 से 2 छोटे वाक्यों में उत्तर दो। "
+        "यूज़र के सवाल का सटीक जवाब दो और कोई बेतुकी बात मत बोलो।"
     )
 
-    for model_name in reliable_models:
+    # Groq खाते से सक्रिय मॉडल्स की ताज़ा सूची प्राप्त करना
+    try:
+        models_data = client.models.list().data
+        active_ids = [m.id for m in models_data]
+        # ऑडियो, विज़न और गार्ड मॉडल्स को छोड़कर टेक्स्ट मॉडल्स चुनें
+        usable_models = [
+            m for m in active_ids 
+            if not any(bad in m.lower() for bad in ["whisper", "guard", "moderation", "vision"])
+        ]
+    except Exception as e:
+        return f"Groq Connection Error: {str(e)}"
+
+    last_error = ""
+    for model_name in usable_models:
         try:
             completion = client.chat.completions.create(
                 model=model_name,
@@ -50,16 +54,17 @@ def get_jugnu_response(prompt_text):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt_text}
                 ],
-                max_tokens=200,
-                temperature=0.3
+                max_tokens=150,
+                temperature=0.5
             )
-            ans = completion.choices[0].message.content.strip()
-            if ans:
-                return ans
-        except Exception:
+            reply = completion.choices[0].message.content.strip()
+            if reply:
+                return reply
+        except Exception as err:
+            last_error = str(err)
             continue
 
-    return "अलविदा! फिर मिलते हैं।"
+    return f"Error: {last_error}" if last_error else "माफ़ कीजिए, कोई सक्रिय मॉडल नहीं मिला।"
 
 st.title("✨ JUGNU AI Assistant")
 st.caption("Aapka personal AI saathi — Superfast & Free")
