@@ -274,10 +274,10 @@ def get_jugnu_response(prompt_text, mode_name):
 
     sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
     
-    # Supported Groq Models: llama-3.1-70b-versatile or llama-3.1-8b-instant
+    # पक्का और स्टेबल Groq मॉडल (llama3-8b-8192)
     try:
         res = client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
+            model="llama3-8b-8192",
             messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
             max_tokens=150,
             temperature=0.4
@@ -286,7 +286,7 @@ def get_jugnu_response(prompt_text, mode_name):
     except Exception:
         try:
             res = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
+                model="llama3-70b-8192",
                 messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
                 max_tokens=150,
                 temperature=0.4
