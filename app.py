@@ -11,7 +11,7 @@ from gtts import gTTS
 st.set_page_config(page_title="JUGNU AI", page_icon="✨", layout="centered")
 st.markdown("", unsafe_allow_html=True)
 
-# --- Session States for Notes & Chat ---
+# --- Session States ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
@@ -19,16 +19,14 @@ if "messages" not in st.session_state:
 if "personal_notes" not in st.session_state:
     st.session_state.personal_notes = []
 
-# --- Sidebar: Settings, Modes, Notepad & Export ---
+# --- Sidebar: Settings & Tools ---
 st.sidebar.title("✨ JUGNU Settings")
 
-# 1. Personality Mode
 bot_mode = st.sidebar.selectbox(
     "JUGNU का अंदाज़ (Mode):",
     ["दोस्ताना (Friendly)", "शिक्षक (Study / Teacher)", "कहानीकार (Storyteller)"]
 )
 
-# 2. Voice Speed Control
 voice_speed_option = st.sidebar.radio(
     "आवाज़ की गति (Voice Speed):",
     ["सामान्य (Normal)", "धीमी (Slow)"],
@@ -36,10 +34,10 @@ voice_speed_option = st.sidebar.radio(
 )
 is_slow_voice = (voice_speed_option == "धीमी (Slow)")
 
-# 3. Personal Notepad / Reminders in Sidebar
+# Sidebar Diary / Notes
 st.sidebar.markdown("---")
 st.sidebar.subheader("📝 जुगनू डायरी (Notes)")
-new_note = st.sidebar.text_input("नया नोट / काम लिखें:", key="input_new_note", placeholder="उदा. 5 बजे बैंक जाना है")
+new_note = st.sidebar.text_input("नया काम लिखें:", key="input_new_note", placeholder="उदा. 5 बजे बैंक जाना है")
 if st.sidebar.button("➕ नोट जोड़ें", use_container_width=True):
     if new_note.strip():
         st.session_state.personal_notes.append(new_note.strip())
@@ -47,7 +45,7 @@ if st.sidebar.button("➕ नोट जोड़ें", use_container_width=Tru
         st.rerun()
 
 if st.session_state.personal_notes:
-    st.sidebar.write("**आपके सेव किए गए काम:**")
+    st.sidebar.write("**आपके काम:**")
     for idx, note in enumerate(st.session_state.personal_notes):
         st.sidebar.markdown(f"{idx+1}. {note}")
     if st.sidebar.button("🗑️ सारे नोट साफ़ करें", use_container_width=True):
@@ -55,7 +53,6 @@ if st.session_state.personal_notes:
         st.rerun()
 
 st.sidebar.markdown("---")
-# 4. Clear Chat Button
 if st.sidebar.button("🗑️ पूरी चैट साफ़ करें", use_container_width=True):
     st.session_state.messages = [
         {"role": "assistant", "content": "नमस्ते! मैं जुगनू हूँ। कहिए आज मैं आपकी क्या मदद कर सकता हूँ?"}
@@ -117,10 +114,10 @@ def play_audio(text, autoplay=False, slow=False):
         sound.seek(0)
         
         st.audio(sound, format="audio/mp3", autoplay=autoplay)
-    except Exception as e:
+    except Exception:
         pass
 
-# Safe Math Evaluator
+# Safe Math Engine
 def try_evaluate_math(prompt_text):
     text = prompt_text.lower().replace("प्रतिशत", "%").replace("percent", "%")
     pct_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:ka|का|of)\s*(\d+(?:\.\d+)?)\s*%", text)
@@ -155,20 +152,21 @@ def try_evaluate_math(prompt_text):
 def get_jugnu_response(prompt_text, mode_name):
     p = prompt_text.lower().strip()
 
-    # Feature: AI Image Generation Detection
+    # Image Generation Check
     image_triggers = ["photo banao", "image banao", "tasveer banao", "photo generate", "image generate", "चित्र बनाओ", "फोटो बनाओ"]
     if any(trig in p for trig in image_triggers):
         img_prompt = p
         for trig in image_triggers:
             img_prompt = img_prompt.replace(trig, "")
         img_prompt = img_prompt.replace("ki", "").replace("ka", "").replace("ek", "").strip()
+        img_prompt = img_prompt.replace('"', '').replace("'", "")
         if not img_prompt:
-            img_prompt = "beautiful nature wallpaper"
+            img_prompt = "beautiful desert rajasthan"
         encoded = urllib.parse.quote(img_prompt)
         image_url = f"[https://image.pollinations.ai/prompt/](https://image.pollinations.ai/prompt/){encoded}?width=800&height=600&nologo=true"
         return f"IMAGE_GEN:{image_url}|{img_prompt}"
 
-    # Feature 1: Creator ke bare me poora parichay
+    # Creator Details
     creator_keywords = [
         "bare me", "bare mein", "batao", "btao", "kutch batayo", "kuch batao",
         "kahan ke", "kahan rahte", "papa", "pita", "father", "village", "gaav", "gaon"
@@ -176,23 +174,22 @@ def get_jugnu_response(prompt_text, mode_name):
     if any(k in p for k in creator_keywords) and any(w in p for w in ["jisne", "jisne banaya", "banaya", "uske", "unke", "arvind", "creator", "nirmata"]):
         return "मुझे अरविंद सिंह ने बनाया है और उनके पापा का नाम मिस्टर रेवंत सिंह है और उनका गाँव दूजासर है और अभी श्री मोहनगढ़ में रहते हैं।"
 
-    # Feature 2: Sirf pooche ki kisne banaya
     if any(k in p for k in ["kisne banaya", "kisne bnaya", "tumko kisne", "creator kaun", "creator kon", "किसने बनाया"]):
         return "मुझे अरविंद सिंह ने बनाया है।"
 
-    # Feature 3: Personal Notes Reader
+    # Notes
     if any(k in p for k in ["mere note", "mere notes", "kya kaam", "meri diary", "mera note", "नोट बताओ"]):
         if not st.session_state.personal_notes:
             return "आपकी डायरी में अभी कोई नोट सेव नहीं है। आप साइडबार में नया नोट जोड़ सकते हैं।"
         notes_str = "। ".join([f"{i+1}: {nt}" for i, nt in enumerate(st.session_state.personal_notes)])
         return f"आपकी डायरी में ये काम लिखे हैं: {notes_str}।"
 
-    # Feature 4: Math Engine
+    # Math
     math_ans = try_evaluate_math(prompt_text)
     if math_ans:
         return math_ans
 
-    # Feature 5: Live Time & Date Tool (IST)
+    # Live Time & Date
     if any(k in p for k in ["samay", "time", "kitne baje", "kya samay", "तारीख", "date", "दिन", "din", "समय"]):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         ist_now = now_utc + datetime.timedelta(hours=5, minutes=30)
@@ -210,13 +207,13 @@ def get_jugnu_response(prompt_text, mode_name):
             return f"अभी समय {time_str} हुआ है।"
         return f"आज {day_hi} है और तारीख {date_str} है।"
 
-    # Feature 6: Weather query
+    # Weather
     if any(k in p for k in ["mausam", "weather", "taapman", "tapman", "मौसम"]):
         if any(w in p for w in ["mohangarh", "mohan garh", "मोहनगढ़"]):
             return "श्री मोहनगढ़ में मौसम धूप भरा और सुहावना है। दिन में हल्की गर्माहट और हवा चल रही है।"
         return "आज का मौसम साफ़ और सामान्य बना हुआ है।"
 
-    # Mode Instructions
+    # General Chat via Groq LLM
     mode_instructions = "तुम बहुत दोस्ताना और मददगार स्वभाव में बात करो।"
     if "शिक्षक" in mode_name:
         mode_instructions = "तुम एक बुद्धिमान शिक्षक की तरह ज्ञानवर्धक, सटीक और स्पष्ट भाषा में समझाओ।"
@@ -261,7 +258,7 @@ def get_jugnu_response(prompt_text, mode_name):
 
     return f"Error: {last_error}" if last_error else "माफ़ कीजिए, कोई सक्रिय मॉडल नहीं मिला।"
 
-# Display Message History
+# Display Chat History
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -269,104 +266,8 @@ for i, msg in enumerate(st.session_state.messages):
         if content.startswith("IMAGE_GEN:"):
             parts = content.replace("IMAGE_GEN:", "").split("|")
             img_url = parts[0]
-            cap = parts[1] if len(parts) > 1 else "AI Generated Photo"
-            st.image(img_url, caption=f"🎨 जुगनू ने बनाई: {cap}", use_container_width=True)
-            st.markdown(f"📥 [यहाँ क्लिक करके फ़ोटो डाउनलोड करें]({img_url})")
-        else:
-            st.markdown(content)
-            if msg["role"] == "assistant":
-                play_audio(content, autoplay=(i == total_msgs - 1 and total_msgs > 1), slow=is_slow_voice)
-
-# --- Export / Download Chat (Sidebar) ---
-chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.messages])
-st.sidebar.download_button(
-    label="📥 बातचीत डाउनलोड करें",
-    data=chat_text,
-    file_name="jugnu_chat_history.txt",
-    mime="text/plain",
-    use_container_width=True
-)
-
-# --- Quick Suggestion Buttons ---
-st.write("")
-st.markdown("💡 **त्वरित सवाल (Quick Tap):**")
-q_row1 = st.columns(4)
-q_row2 = st.columns(4)
-quick_prompt = None
-
-if q_row1[0].button("👑 निर्माता कौन है?", use_container_width=True):
-    quick_prompt = "tum ko jisne banaya ha unke bare me kutch batayo"
-if q_row1[1].button("⏰ अभी क्या समय है?", use_container_width=True):
-    quick_prompt = "Abhi kya samay hua hai?"
-if q_row1[2].button("🎨 फोटो बनाओ", use_container_width=True):
-    quick_prompt = "photo banao beautiful sunrise over thar desert rajasthan"
-if q_row1[3].button("😄 एक चुटकुला", use_container_width=True):
-    quick_prompt = "Ek mazedaar chhota chutkula sunao"
-
-if q_row2[0].button("🎯 क्विज़ खेलें", use_container_width=True):
-    quick_prompt = "Mujhse Rajasthan ya Bharat se juda ek rochak samanya gyan ka sawal poocho jisme 4 vikalp hon."
-if q_row2[1].button("🍎 सेहत टिप", use_container_width=True):
-    quick_prompt = "Aaj ke liye ek chhota aur faydemand health tip batao."
-if q_row2[2].button("📝 मेरे नोट्स", use_container_width=True):
-    quick_prompt = "mere notes batao"
-if q_row2[3].button("📖 एक सुविचार", use_container_width=True):
-    quick_prompt = "Aaj ka achha suvichar batao"
-
-# --- FITTED COMPACT INPUT BAR (Text Box + Mic in One Single Clean Bar) ---
-st.write("")
-input_col1, input_col2 = st.columns([5, 1])
-
-with input_col1:
-    user_text = st.chat_input("यहाँ लिखकर पूछिए या फोटो बनाने को कहिए...")
-
-with input_col2:
-    voice_input = st.audio_input("Mic", key="jugnu_mic_fitted", label_visibility="collapsed")
-
-# Handle Query Trigger
-def handle_user_query(query_text):
-    st.session_state.messages.append({"role": "user", "content": query_text})
-    with st.spinner("जुगनू काम कर रहा है..."):
-        reply = get_jugnu_response(query_text, bot_mode)
-    
-    # Smart Link Detection
-    q_low = query_text.lower()
-    if not reply.startswith("IMAGE_GEN:"):
-        if "youtube" in q_low:
-            search_term = query_text.replace("youtube", "").replace("par", "").replace("khojo", "").strip()
-            reply += f"\n\n▶️ [यहाँ क्लिक करके YouTube पर देखें](https://www.youtube.com/results?search_query={search_term})"
-        elif "google" in q_low:
-            search_term = query_text.replace("google", "").replace("par", "").replace("khojo", "").strip()
-            reply += f"\n\n🔍 [यहाँ क्लिक करके Google पर खोजें](https://www.google.com/search?q={search_term})"
-
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-    st.rerun()
-
-# 1. Quick suggestion button clicked
-if quick_prompt:
-    handle_user_query(quick_prompt)
-
-# 2. Voice input received
-elif voice_input is not None:
-    audio_bytes = voice_input.getvalue()
-    if ("last_voice" not in st.session_state) or (st.session_state.last_voice != audio_bytes):
-        st.session_state.last_voice = audio_bytes
-        with st.spinner("आपकी आवाज़ सुनी जा रही है..."):
-            recognized_text = ""
-            try:
-                audio_file = io.BytesIO(audio_bytes)
-                audio_file.name = "recording.wav"
-                transcription = client.audio.transcriptions.create(
-                    file=audio_file,
-                    model="whisper-large-v3-turbo",
-                    language="hi"
-                )
-                recognized_text = transcription.text.strip()
-            except Exception as e:
-                st.error(f"Voice error: {str(e)}")
-
-        if recognized_text:
-            handle_user_query(f"🎙 {recognized_text}")
-
-# 3. Text input received
-elif user_text:
-    handle_user_query(user_text)
+            cap = parts[1] if len(parts) > 1 else "AI Photo"
+            
+            # Browser direct image (Never crashes Streamlit server)
+            st.markdown(
+                f"""
