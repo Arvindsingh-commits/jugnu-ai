@@ -3,6 +3,7 @@ import io
 import base64
 from io import BytesIO
 import streamlit as st
+import streamlit.components.v1 as components
 from groq import Groq
 from gtts import gTTS
 
@@ -33,42 +34,15 @@ if st.sidebar.button("💾 Save Theme", use_container_width=True):
     st.sidebar.success("Theme save ho gayi!")
     st.rerun()
 
-# --- Apply Background CSS ---
-def render_theme():
+# --- Force Background JavaScript Injector ---
+def apply_theme_system():
     cur = st.session_state.applied_theme
-    style = ""
-    
-    if cur == "Default White":
-        style = """
-        [data-testid="stAppViewContainer"], .stApp, section.main, [data-testid="stMainBlockContainer"] {
-            background-color: #F8F9FA !important;
-            background-image: none !important;
-        }
-        .stChatMessage {
-            background-color: #FFFFFF !important;
-            border: 1px solid #E2E8F0 !important;
-            border-radius: 12px !important;
-            color: #111111 !important;
-        }
-        """
-    elif cur == "Dark Black":
-        style = """
-        [data-testid="stAppViewContainer"], .stApp, section.main, [data-testid="stMainBlockContainer"] {
-            background-color: #0E1117 !important;
-            background-image: none !important;
-        }
-        h1, h2, h3, p, span, label, .stMarkdown {
-            color: #F0F6FC !important;
-        }
-        .stChatMessage {
-            background-color: #161B22 !important;
-            border: 1px solid #30363D !important;
-            border-radius: 12px !important;
-        }
-        .stChatMessage p, .stChatMessage span {
-            color: #F0F6FC !important;
-        }
-        """
+    b64_img = ""
+    is_image = False
+    is_dark = False
+
+    if cur == "Dark Black":
+        is_dark = True
     elif cur == "Creator Photo":
         found = None
         for name in ["creator.jpg", "creator.png", "creator.jpeg", "creator.JPG", "creator.PNG"]:
@@ -78,55 +52,44 @@ def render_theme():
         if found:
             with open(found, "rb") as f:
                 b64_img = base64.b64encode(f.read()).decode("utf-8")
-            style = f"""
-            [data-testid="stAppViewContainer"], .stApp {{
-                background: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/jpeg;base64,{b64_img}") no-repeat center center fixed !important;
-                background-size: cover !important;
-            }}
-            section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
-                background: transparent !important;
-                background-color: transparent !important;
-            }}
-            h1, h2, h3, p, span, label, .stMarkdown {{
-                color: #FFFFFF !important;
-            }}
-            .stChatMessage {{
-                background-color: rgba(255, 255, 255, 0.93) !important;
-                border-radius: 12px !important;
-            }}
-            .stChatMessage p, .stChatMessage span {{
-                color: #111111 !important;
-            }}
-            """
+            is_image = True
         else:
-            st.sidebar.warning("GitHub par 'creator.jpg' nahi mili!")
-            
+            st.sidebar.warning("⚠️ GitHub par 'creator.jpg' nahi mili!")
     elif cur == "Apni Photo Upload Karein" and st.session_state.custom_bg_b64:
         b64_img = st.session_state.custom_bg_b64
-        style = f"""
-        [data-testid="stAppViewContainer"], .stApp {{
-            background: linear-gradient(rgba(0, 0, 0, 0.60), rgba(0, 0, 0, 0.60)), url("data:image/jpeg;base64,{b64_img}") no-repeat center center fixed !important;
-            background-size: cover !important;
-        }}
-        section.main, [data-testid="stMainBlockContainer"], [data-testid="stHeader"] {{
-            background: transparent !important;
-            background-color: transparent !important;
-        }}
-        h1, h2, h3, p, span, label, .stMarkdown {{
-            color: #FFFFFF !important;
-        }}
-        .stChatMessage {{
-            background-color: rgba(255, 255, 255, 0.93) !important;
-            border-radius: 12px !important;
-        }}
-        .stChatMessage p, .stChatMessage span {{
-            color: #111111 !important;
-        }}
-        """
-        
-    st.markdown(f"", unsafe_allow_html=True)
+        is_image = True
 
-render_theme()
+    # Direct DOM injection via JavaScript to override Streamlit styling completely
+    if is_image:
+        js = f"""
+        
+        """
+        components.html(js, height=0)
+        st.markdown(
+            """
+            
+            """,
+            unsafe_allow_html=True
+        )
+    elif is_dark:
+        js = """
+        
+        """
+        components.html(js, height=0)
+        st.markdown(
+            """
+            
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        js = """
+        
+        """
+        components.html(js, height=0)
+        st.markdown("", unsafe_allow_html=True)
+
+apply_theme_system()
 
 # --- Groq Client Setup ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
@@ -150,7 +113,7 @@ def play_audio(text):
 def get_jugnu_response(prompt_text):
     system_prompt = (
         "Tum JUGNU ho, ek vinamra, smart aur helpful Hindi AI assistant. "
-        "CRITICAL RULE 1: Agar koi pooche ki tumhe kisne banaya hai ya tumhara creator kaun hai, toh kaho: 'Mujhe Arvind Singh ne banaya hai.' "
+        "CRITICAL RULE 1: Agar koi pooche ki tumhe kisne banaya hai ya tumhara creator kaun hai, toh saaf aur seedhe kaho: 'Mujhe Arvind Singh ne banaya hai.' "
         "CRITICAL RULE 2: Hamesha saral Hindi ya Hinglish me 1-2 sentences me hi seedha jawab do. "
         "CRITICAL RULE 3: Arabic ya koi anya bhasha bilkul mat bolo."
     )
