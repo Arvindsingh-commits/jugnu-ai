@@ -199,11 +199,11 @@ def play_audio(text, autoplay=False, slow=False, lang="hi"):
 def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
 
-    # Direct hardcoded answers for basic queries
+    # Direct answers for instant response
     if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "banaya ha"]):
         return "मुझे अरविंद सिंह ने बनाया है, जिनका गाँव दूजासर है और वर्तमान में श्री मोहनगढ़ में रहते हैं।"
 
-    if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "aave"]):
+    if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "aave", "saktee", "sakte"]):
         return "हाँ भाई, म्हूँ मीठी मारवाड़ी बोल सकूँ हूँ! हुकम करो, आज कांई बात करनी है?"
 
     if any(k in p for k in ["photo", "फोटो", "तस्वीर", "tasveer", "image"]) and any(a in p for a in ["banao", "बनाओ", "dikhao", "generate"]):
@@ -213,37 +213,35 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
         img_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true"
         return f"IMAGE_GEN:{img_url}|{query}"
 
-    if "मारवाड़ी" in mode_name or "marwadi" in p:
+    if "मारवाड़ी" in mode_name:
         sys_txt = (
             f"थारो नाम जुगनू AI है। थानै अरविंद सिंह (गाँव दूजासर, श्री मोहनगढ़) बणायो है। "
             f"यूजर को नाम {st.session_state.logged_in_name} है। "
-            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में 'हाँ भाई, म्हूँ मारवाड़ी बोल सकूँ हूँ' कह कर स्वाभाविक जवाब देणो है।"
+            "थनै शुद्ध मीठी राजस्थानी/मारवाड़ी में 1-2 छोटा वाक्यों में बढ़िया और मज़ेदार जवाब देणो है।"
         )
     elif lang == "Hindi":
-        sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक उत्तर दो।"
+        sys_txt = f"तुम जुगनू AI हो, जिसे अरविंद सिंह ने बनाया है। उपयोगकर्ता का नाम {st.session_state.logged_in_name} है। शुद्ध हिंदी में 1-2 छोटे वाक्यों में स्वाभाविक व सटीक उत्तर दो।"
     else:
         sys_txt = f"You are JUGNU AI, created by Arvind Singh. Respond naturally in 1-2 clear English sentences."
 
     if st.session_state.uploaded_doc_text:
         sys_txt += f"\n\nअपलोड की गई फ़ाइल की जानकारी:\n{st.session_state.uploaded_doc_text}\nउपयोगकर्ता के सवाल का जवाब इसी फ़ाइल के आधार पर दें।"
 
-    # Multiple Groq Models Trial
-    candidate_models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
-    errors = []
+    # Groq Active Production Models (Llama 3.3 70B & GPT-OSS 120B)
+    candidate_models = ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "llama-3.1-8b-instant"]
     for mod in candidate_models:
         try:
             res = client.chat.completions.create(
                 model=mod,
                 messages=[{"role": "system", "content": sys_txt}, {"role": "user", "content": prompt_text}],
                 max_tokens=150,
-                temperature=0.4
+                temperature=0.5
             )
             return res.choices[0].message.content.strip()
-        except Exception as e:
-            errors.append(f"{mod}: {str(e)}")
+        except Exception:
             continue
 
-    return "त्रुटि (Groq Error): " + " | ".join(errors)
+    return "माफ़ी चाहता हूँ, इस समय सर्वर व्यस्त है। कृपया एक बार दोबारा पूछें।"
 
 # Chat Message Stream
 total_msgs = len(st.session_state.messages)
@@ -283,7 +281,7 @@ _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# Clean File / Photo Attachment Box
+# File / Photo Attachment Box
 with st.expander("📎 फ़ाइल या फ़ोटो जोड़ें", expanded=False):
     uploaded_file = st.file_uploader("PDF, TXT या फ़ोटो चुनें:", type=["pdf", "txt", "png", "jpg", "jpeg"], key="main_chat_uploader")
     if uploaded_file is not None:
