@@ -13,108 +13,22 @@ from gtts import gTTS
 from pypdf import PdfReader
 from duckduckgo_search import DDGS
 
-st.set_page_config(page_title="JUGNU AI - Super Assistant", page_icon="✨", layout="centered")
-
-# --- UI Styling ---
-st.markdown("""
-<style>
-footer {visibility: hidden;}
-
-.stButton > button {
-    font-size: 13px !important;
-    padding: 6px 10px !important;
-    border-radius: 12px !important;
-    border: 1px solid #dcdcdc !important;
-    background-color: #ffffff !important;
-    color: #222222 !important;
-    white-space: nowrap !important;
-    width: 100% !important;
-}
-.stButton > button:hover {
-    border-color: #ff4b4b !important;
-    color: #ff4b4b !important;
-}
-
-div[data-testid="stAudioInput"] {
-    max-width: 260px !important;
-    margin: 0 auto !important;
-}
-
-.call-card {
-    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-    color: white;
-    padding: 20px;
-    border-radius: 18px;
-    text-align: center;
-    margin-bottom: 20px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-}
-
-@media (max-width: 600px) {
-    .block-container {
-        padding: 1rem 0.5rem !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
-
-# --- SQLite Database ---
-DB_FILE = "jugnu_data.db"
+st.set_page_config(page_title="JUGNU AI - Super Assistant", page_icon="✨", layout="centered")DB_FILE = "jugnu_data.db"
 
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            name TEXT,
-            pin TEXT,
-            plan_type TEXT DEFAULT 'free',
-            msg_count INTEGER DEFAULT 0,
-            last_msg_date TEXT
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS conversations (
-            session_id TEXT PRIMARY KEY,
-            username TEXT,
-            title TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT,
-            role TEXT,
-            content TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            note TEXT,
-            remind_time TEXT
-        )
-    """)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_memories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT,
-            memory_fact TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
+    cur.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, name TEXT, pin TEXT, plan_type TEXT DEFAULT 'free', msg_count INTEGER DEFAULT 0, last_msg_date TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS conversations (session_id TEXT PRIMARY KEY, username TEXT, title TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+    cur.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, role TEXT, content TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+    cur.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, note TEXT, remind_time TEXT)")
+    cur.execute("CREATE TABLE IF NOT EXISTS user_memories (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, memory_fact TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     cur.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('arvind', 'अरविंद सिंह', '1234', 'vip')")
     cur.execute("INSERT OR IGNORE INTO users (username, name, pin, plan_type) VALUES ('admin', 'Admin', '0000', 'vip')")
     conn.commit()
     conn.close()
 
-init_db()
-
-def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
+init_db()def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     cur = conn.cursor()
     cur.execute(query, params)
@@ -124,7 +38,6 @@ def db_query(query, params=(), fetchone=False, fetchall=False, commit=False):
     conn.close()
     return data
 
-# --- Persistent Login State ---
 query_user = st.query_params.get("user", None)
 if query_user and ("logged_in_user" not in st.session_state or not st.session_state.logged_in_user):
     user_row = db_query("SELECT username, name, plan_type FROM users WHERE username = ?", (query_user,), fetchone=True)
@@ -133,31 +46,19 @@ if query_user and ("logged_in_user" not in st.session_state or not st.session_st
         st.session_state.logged_in_name = user_row[1]
         st.session_state.user_plan = user_row[2] if user_row[2] else "free"
 
-if "app_lang" not in st.session_state:
-    st.session_state.app_lang = "Hindi"
-if "logged_in_user" not in st.session_state:
-    st.session_state.logged_in_user = "arvind"
-if "logged_in_name" not in st.session_state:
-    st.session_state.logged_in_name = "अरविंद सिंह"
-if "user_plan" not in st.session_state:
-    st.session_state.user_plan = "vip"
-if "current_session_id" not in st.session_state:
-    st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
-if "uploaded_doc_text" not in st.session_state:
-    st.session_state.uploaded_doc_text = ""
-if "uploaded_image_base64" not in st.session_state:
-    st.session_state.uploaded_image_base64 = None
-if "call_mode_active" not in st.session_state:
-    st.session_state.call_mode_active = False
+if "app_lang" not in st.session_state: st.session_state.app_lang = "Hindi"
+if "logged_in_user" not in st.session_state: st.session_state.logged_in_user = "arvind"
+if "logged_in_name" not in st.session_state: st.session_state.logged_in_name = "अरविंद सिंह"
+if "user_plan" not in st.session_state: st.session_state.user_plan = "vip"
+if "current_session_id" not in st.session_state: st.session_state.current_session_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": "राम राम अरविंद सिंह जी! मैं जुगनू हूँ। हुकम करो, आज कांई सेवा करूँ?"}]
+if "uploaded_doc_text" not in st.session_state: st.session_state.uploaded_doc_text = ""
+if "uploaded_image_base64" not in st.session_state: st.session_state.uploaded_image_base64 = None
+if "call_mode_active" not in st.session_state: st.session_state.call_mode_active = False
 
 st.query_params["user"] = st.session_state.logged_in_user
 is_hi = (st.session_state.app_lang == "Hindi")
-badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"
-
-# --- Sidebar Controls ---
-st.sidebar.write(f"👤 **{st.session_state.logged_in_name}** ({badge})")
+badge = "👑 VIP PRO" if st.session_state.user_plan == "vip" else "🆓 FREE"st.sidebar.write(f"👤 **{st.session_state.logged_in_name}** ({badge})")
 col_top1, col_top2 = st.sidebar.columns(2)
 with col_top1:
     if st.button("➕ नई चैट", use_container_width=True):
@@ -176,13 +77,11 @@ with col_top2:
 
 st.sidebar.markdown("---")
 
-# Voice Call Toggle
 call_btn_text = "🔴 कॉल समाप्त करें" if st.session_state.call_mode_active else "📞 वॉयस कॉल मोड"
 if st.sidebar.button(call_btn_text, use_container_width=True):
     st.session_state.call_mode_active = not st.session_state.call_mode_active
     st.rerun()
 
-# Earnings & VIP Dashboard
 with st.sidebar.expander("💰 कमाई व VIP डैशबोर्ड", expanded=False):
     all_users = db_query("SELECT username, name, plan_type FROM users", fetchall=True)
     if all_users:
@@ -194,10 +93,7 @@ with st.sidebar.expander("💰 कमाई व VIP डैशबोर्ड", e
         if st.button("💾 सेव करें", use_container_width=True):
             db_query("UPDATE users SET plan_type = ? WHERE username = ?", (new_plan, target_u), commit=True)
             st.success("अपडेट हो गया!")
-            st.rerun()
-
-# Settings
-with st.sidebar.expander("⚙️ सेटिंग्स (Settings)", expanded=False):
+            st.rerun()with st.sidebar.expander("⚙️ सेटिंग्स (Settings)", expanded=False):
     chosen_lang = st.selectbox("🌐 भाषा (Language):", ["हिंदी (Hindi)", "English"], index=0 if is_hi else 1)
     new_lang = "Hindi" if "हिंदी" in chosen_lang else "English"
     if new_lang != st.session_state.app_lang:
@@ -207,7 +103,6 @@ with st.sidebar.expander("⚙️ सेटिंग्स (Settings)", expanded=
     voice_speed = st.radio("आवाज़ की गति:", ["सामान्य", "धीमी"])
     is_slow_voice = (voice_speed == "धीमी")
 
-# Memory Bank
 with st.sidebar.expander("🧠 याददाश्त (Memory Bank)", expanded=False):
     mem_input = st.text_input("याद रखने की बात:", placeholder="उदा. मुझे चाय पसंद है")
     if st.button("💾 याद रखो", use_container_width=True) and mem_input.strip():
@@ -222,7 +117,6 @@ with st.sidebar.expander("🧠 याददाश्त (Memory Bank)", expanded
             db_query("DELETE FROM user_memories WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
             st.rerun()
 
-# Smart Reminders & Diary
 with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व डायरी", expanded=False):
     r_text = st.text_input("काम लिखें:", placeholder="उदा. 5 बजे मीटिंग है")
     r_time = st.time_input("समय चुनें:", value=datetime.time(17, 0))
@@ -237,10 +131,7 @@ with st.sidebar.expander("⏰ स्मार्ट रिमाइंडर व
             st.write(f"• {n_text} ({n_t if n_t else 'नोट'})")
         if st.button("🗑 साफ़ करें", use_container_width=True):
             db_query("DELETE FROM notes WHERE username = ?", (st.session_state.logged_in_user,), commit=True)
-            st.rerun()
-
-# History & Search
-st.sidebar.markdown("---")
+            st.rerun()st.sidebar.markdown("---")
 st.sidebar.subheader("🔍 चैट खोजें")
 search_term = st.sidebar.text_input("ढूँढें...", placeholder="उदा. मौसम").strip().lower()
 all_convos = db_query("SELECT session_id, title FROM conversations WHERE username = ? ORDER BY created_at DESC", (st.session_state.logged_in_user,), fetchall=True)
@@ -254,10 +145,7 @@ if all_convos:
             loaded_msgs = db_query("SELECT role, content FROM messages WHERE session_id = ? ORDER BY id ASC", (s_id,), fetchall=True)
             if loaded_msgs:
                 st.session_state.messages = [{"role": r, "content": c} for r, c in loaded_msgs]
-            st.rerun()
-
-# --- Page Header ---
-c1, c2 = st.columns([1, 4])
+            st.rerun()c1, c2 = st.columns([1, 4])
 with c1:
     creator_img = None
     for fname in ["creater 1.jpg", "creater 1.png", "creator 1.jpg", "creator 1.png"]:
@@ -274,7 +162,6 @@ with c2:
 
 st.divider()
 
-# --- Backend Groq & Helper Functions ---
 api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key)
 
@@ -299,14 +186,22 @@ def live_web_search(query):
             return "\n".join([f"• {r.get('title', '')}: {r.get('body', '')}" for r in results])
     except Exception:
         pass
-    return ""
-
-def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
+    return ""def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     p = prompt_text.lower().strip()
-    if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया"]):
+
+    if any(k in p for k in ["kisne banaya", "creator kaun", "किसने बनाया", "banaya ha"]):
         return "मुझे अरविंद सिंह ने बनाया है, जिनका गाँव दूजासर है और वर्तमान में श्री मोहनगढ़ में रहते हैं।"
-    if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "sakte"]):
+
+    if any(k in p for k in ["samay", "time", "समय", "kitne baje"]):
+        now_str = datetime.datetime.now().strftime("%I:%M %p")
+        return f"अभी समय लगभग {now_str} हुआ है।"
+
+    if any(k in p for k in ["chutkula", "chutkule", "joke", "चुटकुला"]):
+        return "अध्यापक: 'हवा दिखाई क्यों नहीं देती?' पप्पू: 'सर, अगर दिखेगी तो लोग पकड़ कर जेब में नहीं भर लेंगे क्या!' 😄"
+
+    if any(k in p for k in ["marwadi", "मारवाड़ी"]) and any(k in p for k in ["bol", "aati", "aave", "sakte"]):
         return "हाँ भाई, म्हूँ मीठी मारवाड़ी बोल सकूँ हूँ! हुकम करो, आज कांई बात करनी है?"
+
     if any(k in p for k in ["photo", "फोटो", "तस्वीर"]) and any(a in p for a in ["banao", "बनाओ", "generate"]):
         query = p.replace("photo", "").replace("banao", "").replace("फोटो", "").replace("बनाओ", "").strip() or "Rajasthan royal desert fort"
         img_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(query)}?width=800&height=500&nologo=true"
@@ -333,7 +228,9 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
     if search_context:
         sys_txt += f"\n\nसर्च जानकारी:\n{search_context}"
 
-    for sm in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+    target_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]
+
+    for sm in target_models:
         try:
             res = client.chat.completions.create(
                 model=sm,
@@ -344,18 +241,14 @@ def get_jugnu_response(prompt_text, mode_name, lang="Hindi"):
             return res.choices[0].message.content.strip()
         except Exception:
             continue
-    return "माफ़ी चाहता हूँ, कृपया 2 सेकंड बाद दोबारा पूछें।"
 
-# Voice Call Screen Banner
-if st.session_state.call_mode_active:
-    st.markdown("""
-        <div class="call-card">
-            <h2>📞 जुगनू लाइव वॉयस कॉल एक्टिव है</h2>
-            <p>नीचे माइक दबाकर बोलें, जुगनू सीधे आवाज़ में उत्तर देगा!</p>
-        </div>
-    """, unsafe_allow_html=True)
+    if search_context:
+        first_line = search_context.split("\n")[0]
+        return f"ताज़ा जानकारी के अनुसार: {first_line[:150]}"
 
-# Chat Message Stream
+    return "हुकम! मैं आपकी बात समझ गया हूँ, बताइए इस बारे में और क्या सहायता करूँ?"if st.session_state.call_mode_active:
+    st.info("📞 जुगनू लाइव वॉयस कॉल एक्टिव है! नीचे माइक दबाकर बोलें, जुगनू सीधे आवाज़ में उत्तर देगा।")
+
 total_msgs = len(st.session_state.messages)
 for i, msg in enumerate(st.session_state.messages):
     with st.chat_message(msg["role"]):
@@ -369,10 +262,7 @@ for i, msg in enumerate(st.session_state.messages):
             st.write(c)
             if msg["role"] == "assistant":
                 auto_audio = True if st.session_state.call_mode_active else (i == total_msgs - 1 and total_msgs > 1)
-                play_audio(c, autoplay=auto_audio, slow=is_slow_voice, lang=st.session_state.app_lang)
-
-# 8 Quick Suggestion Buttons
-if not st.session_state.call_mode_active:
+                play_audio(c, autoplay=auto_audio, slow=is_slow_voice, lang=st.session_state.app_lang)if not st.session_state.call_mode_active:
     st.write("")
     st.caption("त्वरित सुझाव:")
     r1 = st.columns(4)
@@ -397,13 +287,11 @@ if not st.session_state.call_mode_active:
 else:
     quick_prompt = None
 
-# Audio Mic Input
 st.write("")
 _, col_mic, _ = st.columns([1, 1, 1])
 with col_mic:
     voice_input = st.audio_input("माइक", key="jugnu_mic_box", label_visibility="collapsed")
 
-# File Upload Expand Box
 if not st.session_state.call_mode_active:
     with st.expander("📎 फ़ाइल या फ़ोटो जोड़ें", expanded=False):
         uploaded_file = st.file_uploader("PDF, TXT या फ़ोटो चुनें:", type=["pdf", "txt", "png", "jpg", "jpeg"], key="main_chat_uploader")
