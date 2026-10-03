@@ -6,7 +6,8 @@ import time
 import hashlib
 import sqlite3
 from datetime import datetime
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+from urllib.request import Request, urlopen
 
 import streamlit as st
 from groq import Groq
@@ -17,7 +18,10 @@ from PIL import Image
 try:
     from duckduckgo_search import DDGS
 except Exception:
-    DDGS = None
+    try:
+        from ddgs import DDGS
+    except Exception:
+        DDGS = None
 
 st.set_page_config(
     page_title="जुगनू AI",
@@ -304,6 +308,59 @@ def live_search(query):
     except Exception:
         return []
 
+def weather_description(code):
+    codes = {
+        0: "साफ आसमान", 1: "मुख्यतः साफ", 2: "आंशिक बादल", 3: "बादल",
+        45: "कोहरा", 48: "कोहरा", 51: "हल्की बूंदाबांदी", 53: "बूंदाबांदी",
+        55: "घनी बूंदाबांदी", 61: "हल्की बारिश", 63: "बारिश", 65: "तेज बारिश",
+        71: "हल्की बर्फबारी", 73: "बर्फबारी", 75: "तेज बर्फबारी",
+        80: "हल्की बारिश की बौछार", 81: "बारिश की बौछार", 82: "तेज बारिश की बौछार",
+        95: "गरज के साथ बारिश", 96: "गरज और ओलावृष्टि", 99: "गरज और तेज ओलावृष्टि"
+    }
+    return codes.get(code, "मौसम की स्थिति उपलब्ध")
+
+def get_weather(city):
+    city = clean_text(city).strip()
+    if not city:
+        return None
+    try:
+        q = urlencode({"name": city, "count": 1, "language": "hi", "format": "json"})
+        req = Request("https://geocoding-api.open-meteo.com/v1/search?" + q, headers={"User-Agent": "JugnuAI/2.0"})
+        with urlopen(req, timeout=10) as r:
+            geo = json.loads(r.read().decode("utf-8"))
+        places = geo.get("results") or []
+        if not places:
+            return None
+        place = places[0]
+        lat, lon = place["latitude"], place["longitude"]
+        q2 = urlencode({
+            "latitude": lat, "longitude": lon,
+            "current": "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m",
+            "timezone": "auto"
+        })
+        req2 = Request("https://api.open-meteo.com/v1/forecast?" + q2, headers={"User-Agent": "JugnuAI/2.0"})
+        with urlopen(req2, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        cur = data.get("current", {})
+        temp = cur.get("temperature_2m")
+        feels = cur.get("apparent_temperature")
+        humidity = cur.get("relative_humidity_2m")
+        wind = cur.get("wind_speed_10m")
+        code = cur.get("weather_code")
+        place_name = place.get("name", city)
+        country = place.get("country", "")
+        snippet = (
+            f"{place_name}, {country}: अभी तापमान {temp}°C, महसूस {feels}°C, "
+            f"{weather_description(code)}, नमी {humidity}%, हवा {wind} km/h।"
+        )
+        return {
+            "title": f"Current weather — {place_name}",
+            "url": "https://open-meteo.com/",
+            "snippet": snippet,
+        }
+    except Exception:
+        return None
+
 def search_context(results):
     if not results:
         return ""
@@ -475,6 +532,13 @@ def render_message(role, content, idx, username):
     else:
         with st.chat_message("assistant"):
             st.markdown(content)
+            image_match = re.search(r"https://image\.pollinations\.ai/prompt/[^\s]+", content)
+            if image_match:
+                image_url = image_match.group(0)
+                try:
+                    st.image(image_url, caption="🎨 Jugnu AI Image", use_container_width=True)
+                except Exception:
+                    st.info("Image link ऊपर दिया गया है।")
             if content and not content.startswith("AI response error"):
                 if st.button("🔊 सुनें", key=f"listen_{username}_{idx}"):
                     lang = st.session_state.get("language", "हिंदी")
@@ -518,6 +582,10 @@ if "last_audio_hash" not in st.session_state:
     st.session_state.last_audio_hash = ""
 if "quick_prompt" not in st.session_state:
     st.session_state.quick_prompt = ""
+if "weather_city" not in st.session_state:
+    st.session_state.weather_city = "Jaipur"
+if "last_sources" not in st.session_state:
+    st.session_state.last_sources = []
 
 with st.sidebar:
     st.markdown("## ✨ जुगनू AI")
@@ -538,6 +606,9 @@ with st.sidebar:
         value=st.session_state.voice_call,
         help="Voice input के बाद AI answer को automatically सुनाने की कोशिश करेगा।",
     )
+
+    st.subheader("📍 Weather City")
+    st.session_state.weather_city = st.text_input("मौसम किस शहर का?", value=st.session_state.get("weather_city", "Jaipur"))
 
     st.subheader("⚙️ Settings")
     st.session_state.language = st.selectbox(
@@ -741,6 +812,10 @@ if prompt:
     explicit_web = st.session_state.web_search
     use_web = should_search_web(prompt, explicit_web)
     web_results = live_search(prompt) if use_web else []
+    if "मौसम" in prompt.lower() or "weather" in prompt.lower():
+        weather_result = get_weather(st.session_state.get("weather_city", "Jaipur"))
+        if weather_result:
+            web_results = [weather_result] + web_results
 
     doc_ctx = ""
     if pdf_mode and st.session_state.pdf_text:
