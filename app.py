@@ -1,12 +1,14 @@
 import os
 import re
 import io
+import base64
 import hashlib
 import sqlite3
 from datetime import datetime
 
 import streamlit as st
 from groq import Groq
+from openai import OpenAI
 from gtts import gTTS
 from pypdf import PdfReader
 from PIL import Image
@@ -31,6 +33,10 @@ DEFAULT_MODEL = "openai/gpt-oss-120b"
 FALLBACK_MODEL = "openai/gpt-oss-20b"
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
+# OpenAI image model
+IMAGE_MODEL = "gpt-image-1.5"
+
+
 st.set_page_config(
     page_title="जुगनू AI",
     page_icon="✨",
@@ -47,8 +53,6 @@ st.markdown(
     """
     <style>
 
-    /* ---------- GLOBAL ---------- */
-
     .stApp {
         background: #ffffff;
     }
@@ -61,8 +65,6 @@ st.markdown(
     [data-testid="stSidebar"] > div:first-child {
         padding-top: 1rem;
     }
-
-    /* ---------- SIDEBAR ---------- */
 
     .jugnu-logo {
         font-size: 25px;
@@ -94,8 +96,6 @@ st.markdown(
         font-size: 12px;
         margin-top: 3px;
     }
-
-    /* ---------- MAIN ---------- */
 
     .main-header {
         text-align: center;
@@ -133,14 +133,10 @@ st.markdown(
         font-size: 16px;
     }
 
-    /* ---------- CHAT ---------- */
-
     [data-testid="stChatMessage"] {
         padding-top: 15px;
         padding-bottom: 15px;
     }
-
-    /* ---------- SETTINGS ---------- */
 
     .settings-user {
         background: #f7f7f8;
@@ -149,7 +145,13 @@ st.markdown(
         margin-bottom: 12px;
     }
 
-    /* ---------- FOOTER ---------- */
+    .generated-image-card {
+        background: #f7f7f8;
+        border: 1px solid #e5e5e5;
+        border-radius: 15px;
+        padding: 15px;
+        margin: 15px 0;
+    }
 
     .jugnu-footer {
         text-align: center;
@@ -157,8 +159,6 @@ st.markdown(
         font-size: 12px;
         padding: 18px 0 25px 0;
     }
-
-    /* ---------- HIDE SOME STREAMLIT SPACE ---------- */
 
     div.block-container {
         padding-top: 1rem;
@@ -216,7 +216,6 @@ def init_db():
     conn = db()
     cur = conn.cursor()
 
-    # Existing users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -226,7 +225,6 @@ def init_db():
         )
     """)
 
-    # Login users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS auth_users (
             username TEXT PRIMARY KEY,
@@ -236,7 +234,6 @@ def init_db():
         )
     """)
 
-    # Conversations
     cur.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,7 +244,6 @@ def init_db():
         )
     """)
 
-    # Messages
     cur.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -258,7 +254,6 @@ def init_db():
         )
     """)
 
-    # Notes
     cur.execute("""
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -270,7 +265,6 @@ def init_db():
         )
     """)
 
-    # Memory
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_memories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,7 +274,6 @@ def init_db():
         )
     """)
 
-    # Settings
     cur.execute("""
         CREATE TABLE IF NOT EXISTS app_settings (
             username TEXT PRIMARY KEY,
@@ -294,7 +287,6 @@ def init_db():
         timespec="seconds"
     )
 
-    # Main Arvind user
     cur.execute(
         """
         INSERT OR IGNORE INTO users
@@ -309,7 +301,6 @@ def init_db():
         )
     )
 
-    # Arvind settings
     cur.execute(
         """
         INSERT OR IGNORE INTO app_settings
@@ -319,7 +310,6 @@ def init_db():
         ("arvind",)
     )
 
-    # Old Arvind login
     cur.execute(
         """
         INSERT OR IGNORE INTO auth_users
@@ -360,6 +350,11 @@ defaults = {
     "pdf_mode": True,
     "voice_call": False,
     "auto_speak": False,
+
+    # Image generation
+    "generated_image": None,
+    "generated_image_prompt": "",
+    "generated_image_format": "png",
 }
 
 for key, value in defaults.items():
@@ -485,6 +480,7 @@ def login_user(username, password):
         st.session_state.username = username
         st.session_state.messages = []
         st.session_state.conversation_id = None
+        st.session_state.generated_image = None
 
         return True
 
@@ -497,6 +493,7 @@ def logout_user():
     st.session_state.username = ""
     st.session_state.messages = []
     st.session_state.conversation_id = None
+    st.session_state.generated_image = None
 
     st.rerun()
 
@@ -586,7 +583,6 @@ def show_login_screen():
             ]
         )
 
-        # LOGIN
         with tab_login:
 
             st.markdown(
@@ -640,7 +636,6 @@ def show_login_screen():
                 "arvind / Jugnu@123"
             )
 
-        # SIGNUP
         with tab_signup:
 
             st.markdown(
@@ -703,7 +698,6 @@ def show_login_screen():
 
                         st.error(message)
 
-        # GUEST
         with tab_guest:
 
             st.markdown(
@@ -755,6 +749,7 @@ def show_login_screen():
                 st.session_state.username = "guest"
                 st.session_state.messages = []
                 st.session_state.conversation_id = None
+                st.session_state.generated_image = None
 
                 st.rerun()
 
@@ -890,6 +885,7 @@ def create_conversation(title="नई चैट"):
 
     st.session_state.conversation_id = cid
     st.session_state.messages = []
+    st.session_state.generated_image = None
 
     return cid
 
@@ -981,6 +977,8 @@ def load_conversation(cid):
         for r in rows
     ]
 
+    st.session_state.generated_image = None
+
     return (
         conv["title"]
         if conv
@@ -1065,6 +1063,7 @@ def delete_current_chat():
 
     st.session_state.conversation_id = None
     st.session_state.messages = []
+    st.session_state.generated_image = None
 
     return True
 
@@ -1240,6 +1239,117 @@ def groq_client():
     return Groq(
         api_key=key
     )
+
+
+# =========================================================
+# OPENAI API KEY
+# =========================================================
+
+def get_openai_api_key():
+
+    try:
+
+        if "OPENAI_API_KEY" in st.secrets:
+            return st.secrets["OPENAI_API_KEY"]
+
+    except Exception:
+        pass
+
+    return os.getenv(
+        "OPENAI_API_KEY",
+        ""
+    )
+
+
+# =========================================================
+# REAL AI IMAGE GENERATION
+# =========================================================
+
+def generate_ai_image(
+    prompt,
+    size="1024x1024",
+    quality="auto"
+):
+
+    api_key = get_openai_api_key()
+
+    if not api_key:
+
+        return (
+            None,
+            "",
+            "OPENAI_API_KEY नहीं मिला। "
+            "Streamlit Secrets में OPENAI_API_KEY डालें।"
+        )
+
+    prompt = clean_text(prompt)
+
+    if not prompt:
+
+        return (
+            None,
+            "",
+            "Image prompt खाली है।"
+        )
+
+    try:
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+        result = client.images.generate(
+            model=IMAGE_MODEL,
+            prompt=prompt[:32000],
+            size=size,
+            quality=quality,
+            output_format="png"
+        )
+
+        if not result.data:
+
+            return (
+                None,
+                "",
+                "Image API ने कोई image return नहीं की।"
+            )
+
+        image_data = result.data[0].b64_json
+
+        if not image_data:
+
+            return (
+                None,
+                "",
+                "Image data नहीं मिली।"
+            )
+
+        image_bytes = base64.b64decode(
+            image_data
+        )
+
+        return (
+            image_bytes,
+            "png",
+            ""
+        )
+
+    except Exception as e:
+
+        error_text = str(e)
+
+        if "verification" in error_text.lower():
+
+            error_text += (
+                "\n\nOpenAI API Organization Verification "
+                "की आवश्यकता हो सकती है।"
+            )
+
+        return (
+            None,
+            "",
+            f"Image generation error: {error_text}"
+        )
 
 
 # =========================================================
@@ -1739,7 +1849,11 @@ def photo_request(text):
         "generate image",
         "generate photo",
         "make an image",
-        "create image"
+        "create image",
+        "create a photo",
+        "draw an image",
+        "generate a picture",
+        "make a picture"
 
     ]
 
@@ -1749,14 +1863,50 @@ def photo_request(text):
     )
 
 
-def image_placeholder_message(prompt):
+# =========================================================
+# IMAGE PROMPT CLEANUP
+# =========================================================
 
-    return (
-        "🎨 Image Generation अभी इस version में "
-        "external image API के बिना सक्रिय नहीं है। "
-        "आप Image Upload का इस्तेमाल कर सकते हैं। "
-        "अगले step में हम इसमें असली AI Image Generation जोड़ेंगे।"
-    )
+def image_prompt_from_user(text):
+
+    prompt = clean_text(text)
+
+    remove_phrases = [
+        "photo बनाओ",
+        "फोटो बनाओ",
+        "image बनाओ",
+        "इमेज बनाओ",
+        "चित्र बनाओ",
+        "तस्वीर बनाओ",
+        "generate image",
+        "generate photo",
+        "make an image",
+        "create image",
+        "create a photo",
+        "draw an image",
+        "generate a picture",
+        "make a picture"
+    ]
+
+    for phrase in remove_phrases:
+
+        prompt = re.sub(
+            re.escape(phrase),
+            "",
+            prompt,
+            flags=re.IGNORECASE
+        )
+
+    prompt = clean_text(prompt)
+
+    if not prompt:
+
+        prompt = (
+            "Create a beautiful cinematic realistic image "
+            "with rich details and professional lighting."
+        )
+
+    return prompt
 
 
 # =========================================================
@@ -1830,11 +1980,35 @@ def process_prompt(
 
     elif photo_request(prompt):
 
-        answer = image_placeholder_message(
+        image_prompt = image_prompt_from_user(
             prompt
         )
 
+        image_bytes, image_format, error = generate_ai_image(
+            image_prompt,
+            size="1024x1024",
+            quality="auto"
+        )
+
         results = []
+
+        if error:
+
+            answer = (
+                "❌ Image Generation में समस्या आई।\n\n"
+                + error
+            )
+
+        else:
+
+            st.session_state.generated_image = image_bytes
+            st.session_state.generated_image_prompt = image_prompt
+            st.session_state.generated_image_format = image_format
+
+            answer = (
+                "🎨 **आपकी AI image तैयार है!**\n\n"
+                f"**Prompt:** {image_prompt}"
+            )
 
     else:
 
@@ -1918,7 +2092,7 @@ def quick_buttons():
 
         (
             "🎨 फोटो",
-            "राजस्थान के रेगिस्तान की cinematic photo बनाओ।"
+            "राजस्थान के रेगिस्तान की cinematic realistic photo बनाओ।"
         ),
 
         (
@@ -1985,7 +2159,6 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    # USER CARD
     st.markdown(
         f"""
         <div class="user-card">
@@ -1996,7 +2169,6 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    # NEW CHAT
     if st.button(
         "✏️  नई चैट",
         use_container_width=True
@@ -2008,7 +2180,6 @@ with st.sidebar:
 
     st.divider()
 
-    # MAIN TOGGLES
     st.toggle(
         "📞 Voice Call Mode",
         key="voice_call"
@@ -2040,7 +2211,6 @@ with st.sidebar:
         expanded=False
     ):
 
-        # USER NAME
         st.markdown(
             f"""
             <div class="settings-user">
@@ -2161,10 +2331,6 @@ with st.sidebar:
 
         st.divider()
 
-        # =================================================
-        # DELETE CHAT
-        # =================================================
-
         st.markdown(
             "#### 🗑️ Chat"
         )
@@ -2193,10 +2359,6 @@ with st.sidebar:
             )
 
         st.divider()
-
-        # =================================================
-        # CHANGE PASSWORD
-        # =================================================
 
         st.markdown(
             "#### 🔐 Password"
@@ -2424,7 +2586,7 @@ with st.sidebar:
 
         st.write(
             "VIP PRO features: Voice, Memory, "
-            "PDF, Web Search और advanced chat."
+            "PDF, Web Search, Image Generation और advanced chat."
         )
 
         st.info(
@@ -2433,7 +2595,6 @@ with st.sidebar:
 
     st.divider()
 
-    # LOGOUT
     if st.button(
         "🚪 Logout",
         use_container_width=True
@@ -2504,6 +2665,58 @@ for i, m in enumerate(
     render_message(
         i,
         m
+    )
+
+
+# =========================================================
+# GENERATED IMAGE
+# =========================================================
+
+if st.session_state.generated_image:
+
+    st.markdown(
+        '<div class="generated-image-card">',
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        "### 🎨 AI Generated Image"
+    )
+
+    st.image(
+        st.session_state.generated_image,
+        caption="✨ जुगनू AI Generated Image",
+        use_container_width=True
+    )
+
+    if st.session_state.generated_image_prompt:
+
+        st.caption(
+            "Prompt: "
+            + st.session_state.generated_image_prompt
+        )
+
+    st.download_button(
+        "⬇️ Image Download करें",
+        data=st.session_state.generated_image,
+        file_name="jugnu_ai_image.png",
+        mime="image/png",
+        use_container_width=True
+    )
+
+    if st.button(
+        "🗑️ Generated Image हटाएँ",
+        use_container_width=True
+    ):
+
+        st.session_state.generated_image = None
+        st.session_state.generated_image_prompt = ""
+
+        st.rerun()
+
+    st.markdown(
+        '</div>',
+        unsafe_allow_html=True
     )
 
 
@@ -2716,7 +2929,8 @@ st.markdown(
     """
     <div class="jugnu-footer">
         ✨ जुगनू AI • Groq GPT-OSS • Whisper Voice •
-        SQLite Memory • PDF Reader • Web Search
+        OpenAI Image Generation • SQLite Memory •
+        PDF Reader • Web Search
     </div>
     """,
     unsafe_allow_html=True
