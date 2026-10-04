@@ -4,5 +4,4 @@ gTTS
 pypdf
 Pillow
 ddgs
-openai
 google-genai
