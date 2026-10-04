@@ -4,4 +4,6 @@ gTTS
 pypdf
 Pillow
 ddgs
+openai
 google-genai
+streamlit-cookies-manager-ext
