@@ -6,4 +6,3 @@ Pillow
 ddgs
 openai
 google-genai
-requests
