@@ -56,7 +56,6 @@ FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
-# Gemini image model
 GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
 
 
@@ -318,11 +317,9 @@ if COOKIE_AVAILABLE:
         )
 
         if not cookies.ready():
-
             st.stop()
 
     except Exception:
-
         cookies = None
 
 
@@ -332,10 +329,8 @@ def save_login_cookie(username):
         return
 
     try:
-
         cookies["logged_in_user"] = username
         cookies.save()
-
     except Exception:
         pass
 
@@ -886,11 +881,9 @@ def get_gemini_client():
 def generate_gemini_image(prompt):
 
     if not GEMINI_AVAILABLE:
-
         return None, "Gemini library उपलब्ध नहीं है।"
 
     if not GEMINI_API_KEY:
-
         return None, "GEMINI_API_KEY नहीं मिली।"
 
     try:
@@ -912,10 +905,6 @@ def generate_gemini_image(prompt):
 
         image_bytes = None
 
-        # ---------------------------------------------
-        # New response structure
-        # ---------------------------------------------
-
         if hasattr(response, "outputs"):
 
             for output in response.outputs:
@@ -935,10 +924,6 @@ def generate_gemini_image(prompt):
                             )
 
                         break
-
-        # ---------------------------------------------
-        # Alternative structure
-        # ---------------------------------------------
 
         if image_bytes is None:
 
@@ -1029,7 +1014,6 @@ def clean_image_prompt(prompt):
 def web_search(query, max_results=5):
 
     if not DDGS_AVAILABLE:
-
         return []
 
     try:
@@ -1236,8 +1220,9 @@ def make_tts(
 def creator_answer():
 
     return (
-        "जुगनू AI के निर्माता अरविंद सिंह हैं। "
-        "उनके पिता का नाम Mr Rewant Singh है। "
+        "मुझे अरविंद सिंह ने बनाया है। "
+        "मेरे निर्माता अरविंद सिंह हैं। "
+        "मेरे निर्माता के पिता का नाम Mr Rewant Singh है। "
         "उनका गाँव Doojasar है और वे वर्तमान में "
         "Shri Mohangarh में हैं।"
     )
@@ -1245,23 +1230,87 @@ def creator_answer():
 
 def is_creator_question(prompt):
 
-    p = prompt.lower()
+    p = prompt.lower().strip()
 
-    words = [
+    creator_phrases = [
+
+        # English
         "creator",
+        "who is your creator",
+        "who created you",
+        "who made you",
+        "who built you",
+        "who developed you",
+        "who is your maker",
+        "your maker",
+        "your creator",
         "maker",
         "owner",
-        "who made you",
-        "किसने बनाया",
-        "निर्माता",
-        "मालिक",
-        "बनाने वाला",
-        "अरविंद सिंह कौन"
+
+        # Hindi / Hinglish
+        "creator कौन",
+        "creator कौन है",
+        "creator kaun",
+        "creator kaun hai",
+
+        "maker कौन",
+        "maker कौन है",
+        "maker kaun",
+        "maker kaun hai",
+
+        "owner कौन",
+        "owner कौन है",
+        "owner kaun",
+        "owner kaun hai",
+
+        "तुम्हारा creator कौन है",
+        "तुम्हारा क्रिएटर कौन है",
+        "तुम्हारा क्रिएटर कौन है",
+
+        "तुमको किसने बनाया",
+        "तुमको किसने बनाया है",
+        "तुमको किसने बनाया था",
+
+        "तुम्हें किसने बनाया",
+        "तुम्हें किसने बनाया है",
+        "तुम्हें किसने बनाया था",
+
+        "तुमको किसने बनाया है",
+
+        "जुगनू को किसने बनाया",
+        "जुगनू को किसने बनाया है",
+        "जुगनू किसने बनाई",
+        "जुगनू किसने बनाया",
+        "जुगनू किसने बनाया है",
+
+        "जुगनू का निर्माता कौन है",
+        "जुगनू के निर्माता कौन हैं",
+
+        "तुम्हारा निर्माता कौन है",
+        "तुम्हारे निर्माता कौन हैं",
+        "तुम्हारे निर्माता कौन है",
+
+        "तुम्हारा मालिक कौन है",
+        "तुम्हारा मालिक कौन है",
+
+        "बनाने वाला कौन है",
+        "बनाने वाला कौन है तुम्हारा",
+        "बनाने वाले का नाम",
+
+        "निर्माता कौन है",
+        "निर्माता का नाम",
+
+        "किसने बनाया है तुम्हें",
+        "किसने बनाया तुम्हें",
+
+        "अरविंद सिंह ने बनाया",
+        "अरविंद सिंह ने तुम्हें बनाया",
+        "अरविंद सिंह कौन है"
     ]
 
     return any(
-        x in p
-        for x in words
+        phrase in p
+        for phrase in creator_phrases
     )
 
 
@@ -1348,6 +1397,23 @@ Hindi + English दोनों का natural mixture इस्तेमाल 
 बिना जरूरत बहुत लंबा जवाब मत दो।
 अगर user ने simple सवाल पूछा है तो simple जवाब दो।
 User को practical और सही जानकारी दो।
+
+IMPORTANT CREATOR INFORMATION:
+
+अगर user पूछे कि तुम्हें किसने बनाया,
+तुम्हारा creator कौन है,
+तुम्हारा maker कौन है,
+जुगनू को किसने बनाया,
+या इसी तरह का कोई सवाल पूछे,
+
+तो हमेशा बताना कि तुम्हें अरविंद सिंह ने बनाया है।
+
+अरविंद सिंह जुगनू AI के निर्माता हैं।
+उनके पिता का नाम Mr Rewant Singh है।
+उनका गाँव Doojasar है।
+वे वर्तमान में Shri Mohangarh में हैं।
+
+Creator के बारे में सवाल आने पर किसी दूसरे व्यक्ति का नाम मत बताना।
 """
         + memory_text
     )
@@ -1419,7 +1485,7 @@ def ask_groq(
 
         return response.choices[0].message.content
 
-    except Exception as first_error:
+    except Exception:
 
         try:
 
@@ -1734,10 +1800,6 @@ if not st.session_state.logged_in:
         ]
     )
 
-    # -----------------------------------------------------
-    # LOGIN
-    # -----------------------------------------------------
-
     with login_tab:
 
         username = st.text_input(
@@ -1775,10 +1837,6 @@ if not st.session_state.logged_in:
                 st.error(
                     "Username या Password गलत है।"
                 )
-
-    # -----------------------------------------------------
-    # SIGNUP
-    # -----------------------------------------------------
 
     with signup_tab:
 
@@ -1836,10 +1894,6 @@ if not st.session_state.logged_in:
                     st.error(
                         "यह Username पहले से मौजूद है।"
                     )
-
-    # -----------------------------------------------------
-    # GUEST
-    # -----------------------------------------------------
 
     with guest_tab:
 
@@ -1939,10 +1993,6 @@ with st.sidebar:
 
     st.divider()
 
-    # -----------------------------------------------------
-    # NEW CHAT
-    # -----------------------------------------------------
-
     if st.button(
         "➕ नई चैट",
         use_container_width=True
@@ -1957,18 +2007,10 @@ with st.sidebar:
 
         st.rerun()
 
-    # -----------------------------------------------------
-    # WEB SEARCH
-    # -----------------------------------------------------
-
     web_search_enabled = st.toggle(
         "🌐 Web Search",
         value=False
     )
-
-    # -----------------------------------------------------
-    # VOICE RESPONSE
-    # -----------------------------------------------------
 
     voice_response = st.toggle(
         "🔊 Voice Response",
@@ -1976,10 +2018,6 @@ with st.sidebar:
     )
 
     st.divider()
-
-    # =====================================================
-    # SETTINGS
-    # =====================================================
 
     with st.expander(
         "⚙️ Settings",
@@ -2063,10 +2101,6 @@ with st.sidebar:
 
         st.divider()
 
-        # -------------------------------------------------
-        # PASSWORD
-        # -------------------------------------------------
-
         st.markdown(
             "### 🔑 Password बदलें"
         )
@@ -2128,10 +2162,6 @@ with st.sidebar:
 
         st.divider()
 
-        # -------------------------------------------------
-        # DELETE CURRENT CHAT
-        # -------------------------------------------------
-
         if st.button(
             "🗑️ Current Chat Delete",
             use_container_width=True
@@ -2150,10 +2180,6 @@ with st.sidebar:
             st.session_state.pending_audio = None
 
             st.rerun()
-
-    # =====================================================
-    # MEMORY
-    # =====================================================
 
     with st.expander(
         "🧠 Memory"
@@ -2187,10 +2213,6 @@ with st.sidebar:
             )
 
             st.rerun()
-
-    # =====================================================
-    # REMINDERS / DIARY
-    # =====================================================
 
     with st.expander(
         "📝 Reminders / Diary"
@@ -2243,10 +2265,6 @@ with st.sidebar:
                     note["content"]
                 )
 
-    # =====================================================
-    # CHAT HISTORY
-    # =====================================================
-
     with st.expander(
         "💬 Chat History"
     ):
@@ -2274,10 +2292,6 @@ with st.sidebar:
 
                 st.rerun()
 
-    # =====================================================
-    # VIP DASHBOARD
-    # =====================================================
-
     with st.expander(
         "👑 VIP Dashboard"
     ):
@@ -2290,29 +2304,11 @@ with st.sidebar:
             f"Plan: **{user_plan}**"
         )
 
-        st.write(
-            "✨ AI Chat"
-        )
-
-        st.write(
-            "🖼️ AI Image Generation"
-        )
-
-        st.write(
-            "🧠 Memory"
-        )
-
-        st.write(
-            "🌐 Web Search"
-        )
-
-        st.write(
-            "🎤 Voice"
-        )
-
-    # =====================================================
-    # CREATOR
-    # =====================================================
+        st.write("✨ AI Chat")
+        st.write("🖼️ AI Image Generation")
+        st.write("🧠 Memory")
+        st.write("🌐 Web Search")
+        st.write("🎤 Voice")
 
     with st.expander(
         "👨‍💻 निर्माता"
@@ -2331,10 +2327,6 @@ with st.sidebar:
         )
 
     st.divider()
-
-    # =====================================================
-    # LOGOUT
-    # =====================================================
 
     if st.button(
         "🚪 Logout",
@@ -2642,7 +2634,6 @@ if st.session_state.pending_audio:
         format="audio/mp3"
     )
 
-    # clear after rendering
     st.session_state.pending_audio = None
 
 
@@ -2665,10 +2656,6 @@ def run_user_prompt(prompt):
         file_context=st.session_state.file_context
     )
 
-    # -----------------------------------------------------
-    # UPDATE CHAT TITLE
-    # -----------------------------------------------------
-
     current_messages = get_messages(
         username,
         st.session_state.conversation_id
@@ -2688,10 +2675,6 @@ def run_user_prompt(prompt):
             st.session_state.conversation_id,
             title
         )
-
-    # -----------------------------------------------------
-    # VOICE RESPONSE
-    # -----------------------------------------------------
 
     if voice_response:
 
