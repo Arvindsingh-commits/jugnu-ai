@@ -12,6 +12,7 @@ from gtts import gTTS
 from pypdf import PdfReader
 from PIL import Image
 
+
 # =========================================================
 # OPTIONAL WEB SEARCH
 # =========================================================
@@ -58,7 +59,6 @@ FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
-# Gemini image generation model
 GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
 
 
@@ -338,9 +338,11 @@ def get_secret(name):
         value = st.secrets.get(name)
 
         if value:
+
             return value
 
     except Exception:
+
         pass
 
     return os.getenv(name)
@@ -360,10 +362,10 @@ def get_gemini_key():
 # PERSISTENT LOGIN COOKIE
 # =========================================================
 
-COOKIE_PASSWORD = get_secret("COOKIE_PASSWORD")
+COOKIE_PASSWORD = get_secret(
+    "COOKIE_PASSWORD"
+)
 
-# Fallback ताकि app पूरी तरह बंद न हो,
-# लेकिन Streamlit Cloud में COOKIE_PASSWORD Secret रखना बेहतर है।
 if not COOKIE_PASSWORD:
 
     COOKIE_PASSWORD = (
@@ -398,6 +400,7 @@ if EncryptedCookieManager is not None:
 def save_login_cookie(username):
 
     if cookies is None:
+
         return
 
     try:
@@ -414,6 +417,7 @@ def save_login_cookie(username):
 def get_login_cookie():
 
     if cookies is None:
+
         return None
 
     try:
@@ -424,7 +428,9 @@ def get_login_cookie():
 
         if username:
 
-            return str(username).strip().lower()
+            return str(
+                username
+            ).strip().lower()
 
     except Exception:
 
@@ -436,13 +442,16 @@ def get_login_cookie():
 def clear_login_cookie():
 
     if cookies is None:
+
         return
 
     try:
 
         if "jugnu_username" in cookies:
 
-            del cookies["jugnu_username"]
+            del cookies[
+                "jugnu_username"
+            ]
 
         cookies.save()
 
@@ -1024,10 +1033,6 @@ def generate_gemini_image(prompt):
             },
         )
 
-        # ---------------------------------------------
-        # Main output_image
-        # ---------------------------------------------
-
         if interaction.output_image:
 
             image_data = (
@@ -1044,10 +1049,6 @@ def generate_gemini_image(prompt):
                     ),
                     None,
                 )
-
-        # ---------------------------------------------
-        # Fallback: inspect steps
-        # ---------------------------------------------
 
         try:
 
@@ -1115,9 +1116,7 @@ def generate_gemini_image(prompt):
                 "❌ Gemini authentication error आया।\n\n"
                 "कृपया सुनिश्चित करें कि "
                 "`GEMINI_API_KEY` में Google AI Studio की "
-                "Gemini API key लगी है।\n\n"
-                "OAuth access token या Google login token "
-                "यहाँ नहीं लगाना है।"
+                "Gemini API key लगी है।"
             )
 
         return None, (
@@ -1127,7 +1126,7 @@ def generate_gemini_image(prompt):
 
 
 # =========================================================
-# IMAGE REQUEST DETECTION
+# IMAGE REQUEST
 # =========================================================
 
 def photo_request(text):
@@ -1433,17 +1432,22 @@ def transcribe_audio(
 
 def make_tts(
     text,
-    language="hi"
+    language="hi",
+    slow=False
 ):
 
     try:
+
+        if not text:
+
+            return None
 
         output = io.BytesIO()
 
         tts = gTTS(
             text=text,
             lang=language,
-            slow=False,
+            slow=slow,
         )
 
         tts.write_to_fp(
@@ -1452,7 +1456,67 @@ def make_tts(
 
         output.seek(0)
 
-        return output
+        return output.getvalue()
+
+    except Exception:
+
+        return None
+
+
+# =========================================================
+# VOICE RESPONSE HELPER
+# =========================================================
+
+def prepare_voice_response(
+    text,
+    voice_enabled=True
+):
+
+    if not voice_enabled:
+
+        return None
+
+    if not text:
+
+        return None
+
+    try:
+
+        username = (
+            st.session_state.username
+        )
+
+        settings = get_settings(
+            username
+        )
+
+        language = settings.get(
+            "language",
+            "Hindi"
+        )
+
+        voice_speed = settings.get(
+            "voice_speed",
+            "सामान्य"
+        )
+
+        if language == "English":
+
+            tts_language = "en"
+
+        else:
+
+            tts_language = "hi"
+
+        slow = (
+            voice_speed == "धीमी"
+        )
+
+        return make_tts(
+            text,
+            tts_language,
+            slow,
+        )
 
     except Exception:
 
@@ -1543,13 +1607,13 @@ def build_system_prompt(
     mode_instruction = {
 
         "दोस्ताना":
-            "दोस्त की तरह friendly और सरल तरीके से जवाब दो।",
+            "दोस्त की तरह friendly, natural और सरल तरीके से जवाब दो।",
 
         "शिक्षक":
             "teacher की तरह step-by-step और आसान भाषा में समझाओ।",
 
         "कहानीकार":
-            "जरूरत पड़ने पर कहानी जैसे interesting तरीके से समझाओ।",
+            "जरूरत पड़ने पर कहानी जैसे interesting और engaging तरीके से समझाओ।",
 
         "मारवाड़ी / राजस्थानी":
             "जहाँ उचित हो वहाँ राजस्थानी/मारवाड़ी अंदाज में जवाब दो।",
@@ -1732,7 +1796,7 @@ def process_prompt(
 
     if not prompt:
 
-        return
+        return None
 
     username = (
         st.session_state.username
@@ -1742,10 +1806,6 @@ def process_prompt(
         st.session_state
         .current_conversation_id
     )
-
-    # -----------------------------------------------------
-    # USER MESSAGE SAVE
-    # -----------------------------------------------------
 
     save_message(
         conversation_id,
@@ -1760,9 +1820,9 @@ def process_prompt(
         }
     )
 
-    # -----------------------------------------------------
+    # =====================================================
     # CREATOR
-    # -----------------------------------------------------
+    # =====================================================
 
     if is_creator_question(
         prompt
@@ -1783,11 +1843,11 @@ def process_prompt(
             }
         )
 
-        return
+        return answer
 
-    # -----------------------------------------------------
+    # =====================================================
     # IMAGE
-    # -----------------------------------------------------
+    # =====================================================
 
     if photo_request(
         prompt
@@ -1824,33 +1884,33 @@ def process_prompt(
                 }
             )
 
-        else:
+            return error
 
-            answer = (
-                "🎨 आपकी image तैयार है!\n\n"
-                f"Prompt: {image_prompt}"
-            )
+        answer = (
+            "🎨 आपकी image तैयार है!\n\n"
+            f"Prompt: {image_prompt}"
+        )
 
-            save_message(
-                conversation_id,
-                "assistant",
-                answer,
-            )
+        save_message(
+            conversation_id,
+            "assistant",
+            answer,
+        )
 
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": answer,
-                    "image_data": image_bytes,
-                    "image_prompt": image_prompt,
-                }
-            )
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+                "image_data": image_bytes,
+                "image_prompt": image_prompt,
+            }
+        )
 
-        return
+        return answer
 
-    # -----------------------------------------------------
+    # =====================================================
     # WEB
-    # -----------------------------------------------------
+    # =====================================================
 
     web_context = ""
 
@@ -1867,9 +1927,9 @@ def process_prompt(
                 prompt
             )
 
-    # -----------------------------------------------------
+    # =====================================================
     # MEMORY
-    # -----------------------------------------------------
+    # =====================================================
 
     memories = get_memories(
         username
@@ -1879,9 +1939,9 @@ def process_prompt(
         username
     )
 
-    # -----------------------------------------------------
+    # =====================================================
     # AI
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.spinner(
         "✨ जुगनू सोच रहा है..."
@@ -1900,10 +1960,6 @@ def process_prompt(
             web_context=web_context,
         )
 
-    # -----------------------------------------------------
-    # SAVE
-    # -----------------------------------------------------
-
     save_message(
         conversation_id,
         "assistant",
@@ -1916,6 +1972,8 @@ def process_prompt(
             "content": answer,
         }
     )
+
+    return answer
 
 
 # =========================================================
@@ -2029,10 +2087,6 @@ def login_page():
                 st.session_state.username = (
                     username_clean
                 )
-
-                # -----------------------------------------
-                # SAVE LOGIN FOR FUTURE VISITS
-                # -----------------------------------------
 
                 save_login_cookie(
                     username_clean
@@ -2150,8 +2204,6 @@ def login_page():
 
             st.session_state.messages = []
 
-            # Guest login persistent नहीं रखा गया है।
-
             st.rerun()
 
 
@@ -2182,6 +2234,11 @@ if "messages" not in st.session_state:
 if "pending_prompt" not in st.session_state:
 
     st.session_state.pending_prompt = None
+
+
+if "pending_audio" not in st.session_state:
+
+    st.session_state.pending_audio = None
 
 
 # =========================================================
@@ -2311,7 +2368,7 @@ with st.sidebar:
     st.divider()
 
     # =====================================================
-    # WEB
+    # WEB SEARCH
     # =====================================================
 
     web_enabled = st.toggle(
@@ -2320,7 +2377,7 @@ with st.sidebar:
     )
 
     # =====================================================
-    # VOICE
+    # VOICE RESPONSE
     # =====================================================
 
     voice_response = st.toggle(
@@ -2333,11 +2390,20 @@ with st.sidebar:
     # =====================================================
 
     with st.expander(
-        "⚙️ Settings"
+        "⚙️ Settings",
+        expanded=False,
     ):
 
         settings = get_settings(
             username
+        )
+
+        # -------------------------------------------------
+        # LANGUAGE
+        # -------------------------------------------------
+
+        st.markdown(
+            "### 🌐 Language"
         )
 
         languages = [
@@ -2359,6 +2425,15 @@ with st.sidebar:
             index=languages.index(
                 current_language
             ),
+            key="settings_language",
+        )
+
+        # -------------------------------------------------
+        # BOT MODE
+        # -------------------------------------------------
+
+        st.markdown(
+            "### 🤖 Jugnu का अंदाज़"
         )
 
         modes = [
@@ -2381,6 +2456,15 @@ with st.sidebar:
             index=modes.index(
                 current_mode
             ),
+            key="settings_bot_mode",
+        )
+
+        # -------------------------------------------------
+        # VOICE SPEED
+        # -------------------------------------------------
+
+        st.markdown(
+            "### 🔊 Voice Speed"
         )
 
         speeds = [
@@ -2401,7 +2485,12 @@ with st.sidebar:
             index=speeds.index(
                 current_speed
             ),
+            key="settings_voice_speed",
         )
+
+        # -------------------------------------------------
+        # SAVE SETTINGS
+        # -------------------------------------------------
 
         if st.button(
             "💾 Settings Save",
@@ -2416,8 +2505,12 @@ with st.sidebar:
             )
 
             st.success(
-                "Settings save हो गईं।"
+                "✅ Settings save हो गईं।"
             )
+
+            st.rerun()
+
+        st.divider()
 
         # =================================================
         # PASSWORD
@@ -2439,12 +2532,33 @@ with st.sidebar:
             key="new_password",
         )
 
+        confirm_new_password = st.text_input(
+            "नया Password दोबारा",
+            type="password",
+            key="confirm_new_password",
+        )
+
         if st.button(
-            "Password बदलें",
+            "🔐 Password बदलें",
             use_container_width=True,
         ):
 
-            if authenticate(
+            if not new_password:
+
+                st.warning(
+                    "नया password डालें।"
+                )
+
+            elif (
+                new_password
+                != confirm_new_password
+            ):
+
+                st.error(
+                    "दोनों नए passwords समान नहीं हैं।"
+                )
+
+            elif authenticate(
                 username,
                 old_password,
             ):
@@ -2470,7 +2584,7 @@ with st.sidebar:
                 conn.close()
 
                 st.success(
-                    "Password बदल गया।"
+                    "✅ Password बदल गया।"
                 )
 
             else:
@@ -2482,6 +2596,8 @@ with st.sidebar:
         # =================================================
         # DELETE CHAT
         # =================================================
+
+        st.divider()
 
         if st.button(
             "🗑️ Current Chat Delete",
@@ -2521,10 +2637,11 @@ with st.sidebar:
             placeholder=(
                 "जैसे: मुझे हिंदी में जवाब पसंद है"
             ),
+            key="memory_input",
         )
 
         if st.button(
-            "Memory Save",
+            "💾 Memory Save",
             use_container_width=True,
         ):
 
@@ -2582,6 +2699,7 @@ with st.sidebar:
 
         task = st.text_input(
             "काम / Reminder",
+            key="reminder_task",
         )
 
         remind_at = st.text_input(
@@ -2589,10 +2707,11 @@ with st.sidebar:
             placeholder=(
                 "जैसे 10 Oct 2026 10:00"
             ),
+            key="reminder_time",
         )
 
         if st.button(
-            "Reminder Save",
+            "💾 Reminder Save",
             use_container_width=True,
         ):
 
@@ -2664,8 +2783,13 @@ with st.sidebar:
 
         for conversation in conversations[:30]:
 
+            title = (
+                conversation["title"]
+                or "नई बातचीत"
+            )
+
             if st.button(
-                conversation["title"][:35],
+                title[:35],
                 key=(
                     "conversation_"
                     + str(conversation["id"])
@@ -2686,7 +2810,7 @@ with st.sidebar:
                 st.rerun()
 
     # =====================================================
-    # VIP
+    # VIP DASHBOARD
     # =====================================================
 
     with st.expander(
@@ -2719,7 +2843,15 @@ with st.sidebar:
         )
 
         st.write(
+            "🔊 Voice Response"
+        )
+
+        st.write(
             "🧠 Memory"
+        )
+
+        st.write(
+            "⏰ Reminders"
         )
 
     # =====================================================
@@ -2750,10 +2882,6 @@ with st.sidebar:
         use_container_width=True,
     ):
 
-        # ---------------------------------------------
-        # REMOVE PERSISTENT LOGIN
-        # ---------------------------------------------
-
         clear_login_cookie()
 
         st.session_state.logged_in = False
@@ -2763,6 +2891,8 @@ with st.sidebar:
         st.session_state.messages = []
 
         st.session_state.current_conversation_id = None
+
+        st.session_state.pending_audio = None
 
         st.rerun()
 
@@ -2882,10 +3012,27 @@ for index, (
             use_container_width=True,
         ):
 
-            process_prompt(
+            answer = process_prompt(
                 quick_prompt,
                 web_enabled=web_enabled,
             )
+
+            # ---------------------------------------------
+            # QUICK ACTION VOICE
+            # ---------------------------------------------
+
+            if voice_response and answer:
+
+                audio = prepare_voice_response(
+                    answer,
+                    True,
+                )
+
+                if audio:
+
+                    st.session_state.pending_audio = (
+                        audio
+                    )
 
             st.rerun()
 
@@ -3112,6 +3259,31 @@ for message in (
 
 
 # =========================================================
+# PENDING VOICE AUDIO
+# =========================================================
+
+if st.session_state.pending_audio:
+
+    st.markdown(
+        "🔊 **जुगनू बोल रही है:**"
+    )
+
+    st.audio(
+        st.session_state.pending_audio,
+        format="audio/mp3",
+    )
+
+    if st.button(
+        "❌ Voice बंद करें",
+        key="clear_pending_voice",
+    ):
+
+        st.session_state.pending_audio = None
+
+        st.rerun()
+
+
+# =========================================================
 # VOICE TRANSCRIPTION RESULT
 # =========================================================
 
@@ -3132,11 +3304,24 @@ if st.session_state.pending_prompt:
 
         st.session_state.pending_prompt = None
 
-        process_prompt(
+        answer = process_prompt(
             prompt,
             document_context=document_context,
             web_enabled=web_enabled,
         )
+
+        if voice_response and answer:
+
+            audio = prepare_voice_response(
+                answer,
+                True,
+            )
+
+            if audio:
+
+                st.session_state.pending_audio = (
+                    audio
+                )
 
         st.rerun()
 
@@ -3152,7 +3337,7 @@ prompt = st.chat_input(
 
 if prompt:
 
-    process_prompt(
+    answer = process_prompt(
         prompt,
         document_context=document_context,
         web_enabled=web_enabled,
@@ -3162,47 +3347,18 @@ if prompt:
     # VOICE RESPONSE
     # =====================================================
 
-    if voice_response:
+    if voice_response and answer:
 
-        if st.session_state.messages:
+        audio = prepare_voice_response(
+            answer,
+            True,
+        )
 
-            last_message = (
-                st.session_state.messages[-1]
+        if audio:
+
+            st.session_state.pending_audio = (
+                audio
             )
-
-            if (
-                last_message["role"]
-                == "assistant"
-            ):
-
-                answer = (
-                    last_message["content"]
-                )
-
-                tts_language = "hi"
-
-                settings = get_settings(
-                    username
-                )
-
-                if (
-                    settings["language"]
-                    == "English"
-                ):
-
-                    tts_language = "en"
-
-                audio = make_tts(
-                    answer,
-                    tts_language,
-                )
-
-                if audio:
-
-                    st.audio(
-                        audio,
-                        format="audio/mp3",
-                    )
 
     st.rerun()
 
