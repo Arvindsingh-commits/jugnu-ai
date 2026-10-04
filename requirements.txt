@@ -4,4 +4,6 @@ gTTS
 pypdf
 Pillow
 ddgs
-google-genai>=2.3.0
+openai
+google-genai
+requests
