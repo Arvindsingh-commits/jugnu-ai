@@ -1,6 +1,6 @@
 import os
-import io
 import re
+import io
 import base64
 import hashlib
 import sqlite3
@@ -12,33 +12,53 @@ from gtts import gTTS
 from pypdf import PdfReader
 from PIL import Image
 
-try:
-    from ddgs import DDGS
-    DDGS_AVAILABLE = True
-except Exception:
-    DDGS_AVAILABLE = False
+# =========================================================
+# OPTIONAL WEB SEARCH
+# =========================================================
 
 try:
-    from google import genai
-    GEMINI_AVAILABLE = True
+    from ddgs import DDGS
 except Exception:
-    GEMINI_AVAILABLE = False
+    try:
+        from duckduckgo_search import DDGS
+    except Exception:
+        DDGS = None
 
 
 # =========================================================
-# JUGNU AI - BASIC CONFIG
+# GEMINI
+# =========================================================
+
+try:
+    from google import genai
+except Exception:
+    genai = None
+
+
+# =========================================================
+# COOKIES
+# =========================================================
+
+try:
+    from streamlit_cookies_manager_ext import EncryptedCookieManager
+except Exception:
+    EncryptedCookieManager = None
+
+
+# =========================================================
+# APP SETTINGS
 # =========================================================
 
 APP_NAME = "जुगनू AI"
 
 DB_FILE = "jugnu_data.db"
 
-CHAT_MODEL = "openai/gpt-oss-120b"
-FALLBACK_CHAT_MODEL = "openai/gpt-oss-20b"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+FALLBACK_MODEL = "openai/gpt-oss-20b"
 
 WHISPER_MODEL = "whisper-large-v3-turbo"
 
-# Current Gemini image model
+# Gemini image generation model
 GEMINI_IMAGE_MODEL = "gemini-3.1-flash-image"
 
 
@@ -50,7 +70,7 @@ st.set_page_config(
     page_title="जुगनू AI",
     page_icon="✨",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 
@@ -62,81 +82,81 @@ st.markdown(
     """
 <style>
 
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    visibility: hidden;
+}
+
 .stApp {
-    background: #ffffff;
+    background: #f7f7f8;
 }
 
 .block-container {
-    max-width: 1200px;
     padding-top: 1rem;
     padding-bottom: 5rem;
+    max-width: 1200px;
 }
 
 [data-testid="stSidebar"] {
-    background: #f7f7f8;
+    background: #202123;
 }
 
-[data-testid="stSidebar"] .block-container {
-    padding-top: 1.2rem;
+[data-testid="stSidebar"] * {
+    color: #ffffff !important;
 }
 
 .jugnu-title {
-    font-size: 34px;
-    font-weight: 800;
-    margin-bottom: 0;
+    font-size: 32px;
+    font-weight: 700;
+    text-align: center;
+    margin-top: 10px;
+    margin-bottom: 5px;
 }
 
 .jugnu-subtitle {
+    text-align: center;
     color: #777;
-    font-size: 14px;
-    margin-top: 2px;
+    margin-bottom: 25px;
 }
 
-.jugnu-card {
-    border: 1px solid #e5e5e5;
-    border-radius: 16px;
-    padding: 18px;
-    background: white;
-    margin-bottom: 14px;
+.user-card {
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.08);
+    margin-bottom: 15px;
 }
 
-.jugnu-small {
-    color: #777;
+.creator-card {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.08);
     font-size: 13px;
-}
-
-.jugnu-user {
-    background: #f3f4f6;
-    border-radius: 16px;
-    padding: 12px 16px;
-    margin: 8px 0;
-}
-
-.jugnu-ai {
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 12px 16px;
-    margin: 8px 0;
-    border: 1px solid #eeeeee;
-}
-
-.creator-box {
-    background: #f7f7f8;
-    border-radius: 15px;
-    padding: 15px;
     margin-top: 15px;
 }
 
-.vip-box {
-    border: 1px solid #ddd;
-    border-radius: 15px;
+.tool-card {
     padding: 15px;
-    background: #fafafa;
+    border-radius: 15px;
+    background: white;
+    border: 1px solid #e5e5e5;
+    margin-bottom: 15px;
+}
+
+.small-text {
+    font-size: 12px;
+    color: #777;
 }
 
 </style>
 """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 
@@ -145,23 +165,28 @@ st.markdown(
 # =========================================================
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+
+    conn = sqlite3.connect(
+        DB_FILE,
+        check_same_thread=False
+    )
+
     conn.row_factory = sqlite3.Row
+
     return conn
 
 
 def init_db():
 
     conn = get_db()
+
     cur = conn.cursor()
 
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
+            username TEXT PRIMARY KEY,
             name TEXT,
-            password TEXT,
             plan TEXT DEFAULT 'FREE',
             created_at TEXT
         )
@@ -171,11 +196,9 @@ def init_db():
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS auth_users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
+            username TEXT PRIMARY KEY,
             name TEXT,
-            password TEXT,
-            plan TEXT DEFAULT 'FREE',
+            password_hash TEXT,
             created_at TEXT
         )
         """
@@ -187,7 +210,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT,
             title TEXT,
-            created_at TEXT
+            created_at TEXT,
+            updated_at TEXT
         )
         """
     )
@@ -197,7 +221,6 @@ def init_db():
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             conversation_id INTEGER,
-            username TEXT,
             role TEXT,
             content TEXT,
             created_at TEXT
@@ -210,8 +233,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS notes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT,
-            title TEXT,
-            content TEXT,
+            task TEXT,
+            remind_at TEXT,
+            done INTEGER DEFAULT 0,
             created_at TEXT
         )
         """
@@ -232,400 +256,329 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS app_settings (
             username TEXT PRIMARY KEY,
-            language TEXT DEFAULT 'Hindi',
-            bot_mode TEXT DEFAULT 'Smart',
-            voice_speed INTEGER DEFAULT 1
+            language TEXT,
+            bot_mode TEXT,
+            voice_speed TEXT
         )
         """
     )
 
     conn.commit()
 
-    # Default Arvind account
-    existing = cur.execute(
-        "SELECT * FROM users WHERE username=?",
-        ("arvind",)
-    ).fetchone()
+    # =====================================================
+    # DEFAULT ARVIND ACCOUNT
+    # =====================================================
 
-    if not existing:
+    username = "arvind"
+    name = "अरविंद सिंह"
+    password = "Jugnu@123"
 
-        password_hash = hash_password("Jugnu@123")
-
-        cur.execute(
-            """
-            INSERT INTO users
-            (username, name, password, plan, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                "arvind",
-                "अरविंद सिंह",
-                password_hash,
-                "VIP PRO",
-                now()
-            )
-        )
-
-    conn.commit()
-    conn.close()
-
-
-# =========================================================
-# HELPERS
-# =========================================================
-
-def now():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def hash_password(password):
-    return hashlib.sha256(
+    password_hash = hashlib.sha256(
         password.encode("utf-8")
     ).hexdigest()
 
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO users
+        (username, name, plan, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            username,
+            name,
+            "VIP PRO",
+            datetime.now().isoformat(),
+        ),
+    )
 
-def safe_get_secret(name):
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO auth_users
+        (username, name, password_hash, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            username,
+            name,
+            password_hash,
+            datetime.now().isoformat(),
+        ),
+    )
+
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO app_settings
+        (username, language, bot_mode, voice_speed)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            username,
+            "Hindi",
+            "दोस्ताना",
+            "सामान्य",
+        ),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+init_db()
+
+
+# =========================================================
+# SECRETS
+# =========================================================
+
+def get_secret(name):
 
     try:
+
         value = st.secrets.get(name)
 
         if value:
             return value
+
     except Exception:
         pass
 
     return os.getenv(name)
 
 
-def get_groq_client():
+def get_groq_key():
 
-    key = safe_get_secret("GROQ_API_KEY")
-
-    if not key:
-        return None
-
-    try:
-        return Groq(api_key=key)
-    except Exception:
-        return None
+    return get_secret("GROQ_API_KEY")
 
 
-def get_gemini_client():
+def get_gemini_key():
 
-    key = safe_get_secret("GEMINI_API_KEY")
-
-    if not key:
-        return None
-
-    if not GEMINI_AVAILABLE:
-        return None
-
-    try:
-        return genai.Client(api_key=key)
-    except Exception:
-        return None
-
-
-def escape_text(text):
-
-    if text is None:
-        return ""
-
-    return str(text)
+    return get_secret("GEMINI_API_KEY")
 
 
 # =========================================================
-# USER AUTH
+# PERSISTENT LOGIN COOKIE
 # =========================================================
 
-def login_user(username, password):
+COOKIE_PASSWORD = get_secret("COOKIE_PASSWORD")
+
+# Fallback ताकि app पूरी तरह बंद न हो,
+# लेकिन Streamlit Cloud में COOKIE_PASSWORD Secret रखना बेहतर है।
+if not COOKIE_PASSWORD:
+
+    COOKIE_PASSWORD = (
+        "JugnuAI_Default_Cookie_Secret_2026_ChangeThis"
+    )
+
+
+cookies = None
+
+if EncryptedCookieManager is not None:
+
+    try:
+
+        cookies = EncryptedCookieManager(
+            prefix="jugnu_ai/",
+            password=COOKIE_PASSWORD,
+        )
+
+        if not cookies.ready():
+
+            st.stop()
+
+    except Exception:
+
+        cookies = None
+
+
+# =========================================================
+# LOGIN COOKIE FUNCTIONS
+# =========================================================
+
+def save_login_cookie(username):
+
+    if cookies is None:
+        return
+
+    try:
+
+        cookies["jugnu_username"] = username
+
+        cookies.save()
+
+    except Exception:
+
+        pass
+
+
+def get_login_cookie():
+
+    if cookies is None:
+        return None
+
+    try:
+
+        username = cookies.get(
+            "jugnu_username"
+        )
+
+        if username:
+
+            return str(username).strip().lower()
+
+    except Exception:
+
+        pass
+
+    return None
+
+
+def clear_login_cookie():
+
+    if cookies is None:
+        return
+
+    try:
+
+        if "jugnu_username" in cookies:
+
+            del cookies["jugnu_username"]
+
+        cookies.save()
+
+    except Exception:
+
+        pass
+
+
+# =========================================================
+# PASSWORD
+# =========================================================
+
+def hash_password(password):
+
+    return hashlib.sha256(
+        password.encode("utf-8")
+    ).hexdigest()
+
+
+# =========================================================
+# USER FUNCTIONS
+# =========================================================
+
+def get_user(username):
 
     conn = get_db()
 
-    user = conn.execute(
+    row = conn.execute(
         """
-        SELECT * FROM users
-        WHERE username=? AND password=?
+        SELECT *
+        FROM users
+        WHERE username=?
         """,
-        (
-            username.strip().lower(),
-            hash_password(password)
-        )
+        (username,),
     ).fetchone()
 
     conn.close()
 
-    return user
+    return row
 
 
-def create_user(username, name, password):
-
-    username = username.strip().lower()
-    name = name.strip()
-
-    if not username or not name or not password:
-        return False, "सभी fields भरें।"
-
-    if len(password) < 6:
-        return False, "Password कम से कम 6 characters का होना चाहिए।"
+def create_user(
+    username,
+    name,
+    password
+):
 
     conn = get_db()
 
     try:
+
+        password_hash = hash_password(
+            password
+        )
 
         conn.execute(
             """
             INSERT INTO users
-            (username, name, password, plan, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            (username, name, plan, created_at)
+            VALUES (?, ?, ?, ?)
             """,
             (
                 username,
                 name,
-                hash_password(password),
                 "FREE",
-                now()
-            )
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.execute(
+            """
+            INSERT INTO auth_users
+            (username, name, password_hash, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                username,
+                name,
+                password_hash,
+                datetime.now().isoformat(),
+            ),
+        )
+
+        conn.execute(
+            """
+            INSERT INTO app_settings
+            (username, language, bot_mode, voice_speed)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                username,
+                "Hindi",
+                "दोस्ताना",
+                "सामान्य",
+            ),
         )
 
         conn.commit()
-        conn.close()
 
-        return True, "Account बन गया।"
+        return True, "Account created"
 
     except sqlite3.IntegrityError:
 
+        return False, "Username already exists"
+
+    finally:
+
         conn.close()
 
-        return False, "यह username पहले से मौजूद है।"
 
-
-def change_password(username, old_password, new_password):
+def authenticate(
+    username,
+    password
+):
 
     conn = get_db()
 
-    user = conn.execute(
+    row = conn.execute(
         """
-        SELECT * FROM users
-        WHERE username=? AND password=?
+        SELECT *
+        FROM auth_users
+        WHERE username=?
         """,
-        (
-            username,
-            hash_password(old_password)
-        )
+        (username,),
     ).fetchone()
 
-    if not user:
-        conn.close()
-        return False, "पुराना password गलत है।"
+    conn.close()
 
-    if len(new_password) < 6:
-        conn.close()
-        return False, "नया password कम से कम 6 characters का रखें।"
+    if not row:
 
-    conn.execute(
-        """
-        UPDATE users
-        SET password=?
-        WHERE username=?
-        """,
-        (
-            hash_password(new_password),
-            username
-        )
+        return False
+
+    return (
+        row["password_hash"]
+        == hash_password(password)
     )
-
-    conn.commit()
-    conn.close()
-
-    return True, "Password successfully बदल गया।"
-
-
-# =========================================================
-# CONVERSATIONS
-# =========================================================
-
-def create_conversation(username, title="नई बातचीत"):
-
-    conn = get_db()
-
-    cur = conn.execute(
-        """
-        INSERT INTO conversations
-        (username, title, created_at)
-        VALUES (?, ?, ?)
-        """,
-        (
-            username,
-            title,
-            now()
-        )
-    )
-
-    conversation_id = cur.lastrowid
-
-    conn.commit()
-    conn.close()
-
-    return conversation_id
-
-
-def get_conversations(username):
-
-    conn = get_db()
-
-    rows = conn.execute(
-        """
-        SELECT * FROM conversations
-        WHERE username=?
-        ORDER BY id DESC
-        """,
-        (username,)
-    ).fetchall()
-
-    conn.close()
-
-    return rows
-
-
-def get_messages(conversation_id):
-
-    conn = get_db()
-
-    rows = conn.execute(
-        """
-        SELECT * FROM messages
-        WHERE conversation_id=?
-        ORDER BY id ASC
-        """,
-        (conversation_id,)
-    ).fetchall()
-
-    conn.close()
-
-    return rows
-
-
-def save_message(
-    conversation_id,
-    username,
-    role,
-    content
-):
-
-    conn = get_db()
-
-    conn.execute(
-        """
-        INSERT INTO messages
-        (conversation_id, username, role, content, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            conversation_id,
-            username,
-            role,
-            content,
-            now()
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def update_conversation_title(
-    conversation_id,
-    title
-):
-
-    conn = get_db()
-
-    conn.execute(
-        """
-        UPDATE conversations
-        SET title=?
-        WHERE id=?
-        """,
-        (
-            title[:80],
-            conversation_id
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def delete_conversation(conversation_id):
-
-    conn = get_db()
-
-    conn.execute(
-        """
-        DELETE FROM messages
-        WHERE conversation_id=?
-        """,
-        (conversation_id,)
-    )
-
-    conn.execute(
-        """
-        DELETE FROM conversations
-        WHERE id=?
-        """,
-        (conversation_id,)
-    )
-
-    conn.commit()
-    conn.close()
-
-
-# =========================================================
-# MEMORY
-# =========================================================
-
-def add_memory(username, memory):
-
-    if not memory.strip():
-        return
-
-    conn = get_db()
-
-    conn.execute(
-        """
-        INSERT INTO user_memories
-        (username, memory, created_at)
-        VALUES (?, ?, ?)
-        """,
-        (
-            username,
-            memory.strip(),
-            now()
-        )
-    )
-
-    conn.commit()
-    conn.close()
-
-
-def get_memories(username):
-
-    conn = get_db()
-
-    rows = conn.execute(
-        """
-        SELECT * FROM user_memories
-        WHERE username=?
-        ORDER BY id DESC
-        LIMIT 20
-        """,
-        (username,)
-    ).fetchall()
-
-    conn.close()
-
-    return rows
 
 
 # =========================================================
@@ -638,41 +591,24 @@ def get_settings(username):
 
     row = conn.execute(
         """
-        SELECT * FROM app_settings
+        SELECT *
+        FROM app_settings
         WHERE username=?
         """,
-        (username,)
+        (username,),
     ).fetchone()
-
-    if not row:
-
-        conn.execute(
-            """
-            INSERT INTO app_settings
-            (username, language, bot_mode, voice_speed)
-            VALUES (?, ?, ?, ?)
-            """,
-            (
-                username,
-                "Hindi",
-                "Smart",
-                1
-            )
-        )
-
-        conn.commit()
-
-        row = conn.execute(
-            """
-            SELECT * FROM app_settings
-            WHERE username=?
-            """,
-            (username,)
-        ).fetchone()
 
     conn.close()
 
-    return row
+    if not row:
+
+        return {
+            "language": "Hindi",
+            "bot_mode": "दोस्ताना",
+            "voice_speed": "सामान्य",
+        }
+
+    return dict(row)
 
 
 def save_settings(
@@ -694,251 +630,450 @@ def save_settings(
             username,
             language,
             bot_mode,
-            voice_speed
-        )
+            voice_speed,
+        ),
     )
 
     conn.commit()
+
     conn.close()
 
 
 # =========================================================
-# PDF / TEXT
+# CONVERSATIONS
 # =========================================================
 
-def extract_pdf_text(uploaded_file):
+def create_conversation(
+    username,
+    title="नई बातचीत"
+):
 
-    try:
+    conn = get_db()
 
-        reader = PdfReader(uploaded_file)
+    now = datetime.now().isoformat()
 
-        text = ""
-
-        for page in reader.pages:
-
-            try:
-                page_text = page.extract_text()
-
-                if page_text:
-                    text += page_text + "\n"
-            except Exception:
-                continue
-
-        return text.strip()
-
-    except Exception as e:
-
-        return f"PDF पढ़ने में समस्या: {e}"
-
-
-def extract_text_file(uploaded_file):
-
-    try:
-
-        raw = uploaded_file.read()
-
-        return raw.decode(
-            "utf-8",
-            errors="ignore"
-        )
-
-    except Exception as e:
-
-        return f"Text file पढ़ने में समस्या: {e}"
-
-
-# =========================================================
-# WEB SEARCH
-# =========================================================
-
-def web_search(query, max_results=5):
-
-    if not DDGS_AVAILABLE:
-        return "Web search package उपलब्ध नहीं है।"
-
-    try:
-
-        results = []
-
-        with DDGS() as ddgs:
-
-            for item in ddgs.text(
-                query,
-                max_results=max_results
-            ):
-
-                title = item.get("title", "")
-                body = item.get("body", "")
-                href = item.get("href", "")
-
-                results.append(
-                    f"Title: {title}\n"
-                    f"Summary: {body}\n"
-                    f"URL: {href}"
-                )
-
-        if not results:
-            return "कोई web result नहीं मिला।"
-
-        return "\n\n".join(results)
-
-    except Exception as e:
-
-        return f"Web search में समस्या: {e}"
-
-
-# =========================================================
-# CREATOR INFORMATION
-# =========================================================
-
-def creator_answer(text):
-
-    lower = text.lower()
-
-    creator_words = [
-        "निर्माता कौन",
-        "किसने बनाया",
-        "creator",
-        "who made jugnu",
-        "jugnu ai किसने",
-        "जुगनू ai किसने"
-    ]
-
-    if any(word in lower for word in creator_words):
-
-        return (
-            "जुगनू AI के निर्माता **अरविंद सिंह** हैं।\n\n"
-            "उनके पिता का नाम **Mr Rewant Singh** है।\n"
-            "गाँव: **Doojasar**\n"
-            "वर्तमान स्थान: **Shri Mohangarh**"
-        )
-
-    return None
-
-
-# =========================================================
-# IMAGE REQUEST DETECTION
-# =========================================================
-
-def is_image_request(text):
-
-    text = text.lower().strip()
-
-    keywords = [
-        "image बनाओ",
-        "image banao",
-        "photo बनाओ",
-        "photo banao",
-        "picture बनाओ",
-        "picture banao",
-        "फोटो बनाओ",
-        "तस्वीर बनाओ",
-        "चित्र बनाओ",
-        "generate image",
-        "generate a image",
-        "generate an image",
-        "create image",
-        "create a picture",
-        "make image",
-        "make a photo",
-        "draw image",
-        "draw a picture",
-        "ai image"
-    ]
-
-    return any(
-        key in text
-        for key in keywords
+    cur = conn.execute(
+        """
+        INSERT INTO conversations
+        (username, title, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            username,
+            title,
+            now,
+            now,
+        ),
     )
+
+    conversation_id = cur.lastrowid
+
+    conn.commit()
+
+    conn.close()
+
+    return conversation_id
+
+
+def get_conversations(username):
+
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM conversations
+        WHERE username=?
+        ORDER BY updated_at DESC
+        """,
+        (username,),
+    ).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def load_messages(conversation_id):
+
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT role, content, created_at
+        FROM messages
+        WHERE conversation_id=?
+        ORDER BY id
+        """,
+        (conversation_id,),
+    ).fetchall()
+
+    conn.close()
+
+    return [
+        {
+            "role": row["role"],
+            "content": row["content"],
+        }
+        for row in rows
+    ]
+
+
+def save_message(
+    conversation_id,
+    role,
+    content
+):
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        INSERT INTO messages
+        (conversation_id, role, content, created_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            conversation_id,
+            role,
+            content,
+            datetime.now().isoformat(),
+        ),
+    )
+
+    conn.execute(
+        """
+        UPDATE conversations
+        SET updated_at=?
+        WHERE id=?
+        """,
+        (
+            datetime.now().isoformat(),
+            conversation_id,
+        ),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+def delete_conversation(
+    conversation_id
+):
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        DELETE FROM messages
+        WHERE conversation_id=?
+        """,
+        (conversation_id,),
+    )
+
+    conn.execute(
+        """
+        DELETE FROM conversations
+        WHERE id=?
+        """,
+        (conversation_id,),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+# =========================================================
+# MEMORY
+# =========================================================
+
+def get_memories(username):
+
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT memory
+        FROM user_memories
+        WHERE username=?
+        ORDER BY id DESC
+        LIMIT 20
+        """,
+        (username,),
+    ).fetchall()
+
+    conn.close()
+
+    return [
+        row["memory"]
+        for row in rows
+    ]
+
+
+def save_memory(
+    username,
+    memory
+):
+
+    if not memory.strip():
+
+        return
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        INSERT INTO user_memories
+        (username, memory, created_at)
+        VALUES (?, ?, ?)
+        """,
+        (
+            username,
+            memory.strip(),
+            datetime.now().isoformat(),
+        ),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+def delete_memory(
+    username,
+    memory
+):
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        DELETE FROM user_memories
+        WHERE username=?
+        AND memory=?
+        """,
+        (
+            username,
+            memory,
+        ),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+# =========================================================
+# REMINDERS
+# =========================================================
+
+def save_note(
+    username,
+    task,
+    remind_at
+):
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        INSERT INTO notes
+        (username, task, remind_at, done, created_at)
+        VALUES (?, ?, ?, 0, ?)
+        """,
+        (
+            username,
+            task,
+            remind_at,
+            datetime.now().isoformat(),
+        ),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+def get_notes(username):
+
+    conn = get_db()
+
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM notes
+        WHERE username=?
+        ORDER BY id DESC
+        """,
+        (username,),
+    ).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def mark_note_done(note_id):
+
+    conn = get_db()
+
+    conn.execute(
+        """
+        UPDATE notes
+        SET done=1
+        WHERE id=?
+        """,
+        (note_id,),
+    )
+
+    conn.commit()
+
+    conn.close()
+
+
+# =========================================================
+# GROQ CLIENT
+# =========================================================
+
+def get_groq_client():
+
+    key = get_groq_key()
+
+    if not key:
+
+        return None
+
+    try:
+
+        return Groq(
+            api_key=key
+        )
+
+    except Exception:
+
+        return None
+
+
+# =========================================================
+# GEMINI CLIENT
+# =========================================================
+
+def get_gemini_client():
+
+    key = get_gemini_key()
+
+    if not key:
+
+        return None
+
+    if genai is None:
+
+        return None
+
+    try:
+
+        return genai.Client(
+            api_key=key
+        )
+
+    except Exception:
+
+        return None
 
 
 # =========================================================
 # GEMINI IMAGE GENERATION
 # =========================================================
 
-def generate_image_with_gemini(prompt):
+def generate_gemini_image(prompt):
 
-    client = get_gemini_client()
+    key = get_gemini_key()
 
-    if client is None:
+    if not key:
 
         return None, (
-            "Gemini API connect नहीं हुआ। "
-            "Streamlit Secrets में GEMINI_API_KEY check करें।"
+            "❌ GEMINI_API_KEY नहीं मिली।\n\n"
+            "Streamlit Cloud → Manage app → Settings → Secrets "
+            "में GEMINI_API_KEY डालें।"
+        )
+
+    if genai is None:
+
+        return None, (
+            "❌ google-genai package install नहीं है।\n\n"
+            "requirements.txt में "
+            "`google-genai` जोड़ें।"
         )
 
     try:
 
-        # IMPORTANT:
-        # यहाँ response_format में image/png नहीं भेज रहे।
-        # Google के current Gemini image-generation examples
-        # में direct interactions.create() से image generate की जा सकती है.
+        client = genai.Client(
+            api_key=key
+        )
 
         interaction = client.interactions.create(
             model=GEMINI_IMAGE_MODEL,
-            input=prompt
+            input=prompt,
+            response_format={
+                "type": "image",
+                "mime_type": "image/jpeg",
+                "aspect_ratio": "1:1",
+                "image_size": "1K",
+            },
         )
 
-        # -------------------------------------------------
-        # Method 1: output_image
-        # -------------------------------------------------
+        # ---------------------------------------------
+        # Main output_image
+        # ---------------------------------------------
 
-        output_image = getattr(
-            interaction,
-            "output_image",
-            None
-        )
+        if interaction.output_image:
 
-        if output_image is not None:
-
-            data = getattr(
-                output_image,
-                "data",
-                None
+            image_data = (
+                interaction
+                .output_image
+                .data
             )
 
-            if data:
+            if image_data:
 
-                image_bytes = base64.b64decode(data)
-
-                image = Image.open(
-                    io.BytesIO(image_bytes)
+                return (
+                    base64.b64decode(
+                        image_data
+                    ),
+                    None,
                 )
 
-                return image, None
+        # ---------------------------------------------
+        # Fallback: inspect steps
+        # ---------------------------------------------
 
-        # -------------------------------------------------
-        # Method 2: interaction steps
-        # -------------------------------------------------
+        try:
 
-        steps = getattr(
-            interaction,
-            "steps",
-            None
-        )
+            for step in interaction.steps:
 
-        if steps:
-
-            for step in steps:
-
-                content = getattr(
+                if getattr(
                     step,
-                    "content",
+                    "type",
                     None
-                )
+                ) != "model_output":
 
-                if not content:
                     continue
 
-                for block in content:
+                content_blocks = getattr(
+                    step,
+                    "content",
+                    []
+                )
 
-                    block_type = getattr(
+                for block in content_blocks:
+
+                    if getattr(
                         block,
                         "type",
                         None
-                    )
-
-                    if block_type == "image":
+                    ) == "image":
 
                         data = getattr(
                             block,
@@ -948,80 +1083,376 @@ def generate_image_with_gemini(prompt):
 
                         if data:
 
-                            image_bytes = base64.b64decode(
-                                data
+                            return (
+                                base64.b64decode(
+                                    data
+                                ),
+                                None,
                             )
 
-                            image = Image.open(
-                                io.BytesIO(image_bytes)
-                            )
+        except Exception:
 
-                            return image, None
+            pass
 
         return None, (
-            "Gemini ने image data वापस नहीं दिया। "
-            "कृपया दोबारा कोशिश करें।"
+            "❌ Gemini ने image data वापस नहीं दिया।\n\n"
+            "कृपया दूसरा prompt try करें।"
         )
 
     except Exception as e:
 
-        return None, str(e)
+        error_text = str(e)
+
+        if (
+            "401" in error_text
+            or "UNAUTHENTICATED"
+            in error_text
+            or "ACCESS_TOKEN_TYPE_UNSUPPORTED"
+            in error_text
+        ):
+
+            return None, (
+                "❌ Gemini authentication error आया।\n\n"
+                "कृपया सुनिश्चित करें कि "
+                "`GEMINI_API_KEY` में Google AI Studio की "
+                "Gemini API key लगी है।\n\n"
+                "OAuth access token या Google login token "
+                "यहाँ नहीं लगाना है।"
+            )
+
+        return None, (
+            "❌ Image generation में समस्या आई:\n\n"
+            + error_text
+        )
 
 
 # =========================================================
-# VOICE INPUT
+# IMAGE REQUEST DETECTION
 # =========================================================
 
-def transcribe_audio(audio_file):
+def photo_request(text):
+
+    text = text.lower().strip()
+
+    patterns = [
+
+        "photo बनाओ",
+        "फोटो बनाओ",
+        "फोटो बना",
+        "फोटो बनाइए",
+
+        "image बनाओ",
+        "इमेज बनाओ",
+        "चित्र बनाओ",
+        "तस्वीर बनाओ",
+
+        "photo banao",
+        "photo bana",
+
+        "image banao",
+        "image bana",
+
+        "generate image",
+        "generate photo",
+
+        "create image",
+        "create a image",
+        "create a picture",
+
+        "make an image",
+        "make image",
+        "make a picture",
+
+        "generate a picture",
+
+        "draw an image",
+        "draw a picture",
+
+        "ai image",
+        "ai photo",
+        "ai picture",
+    ]
+
+    return any(
+        phrase in text
+        for phrase in patterns
+    )
+
+
+def clean_image_prompt(text):
+
+    replacements = [
+
+        "फोटो बनाओ",
+        "फोटो बना",
+        "फोटो बनाइए",
+        "फोटो तैयार करो",
+
+        "image बनाओ",
+        "इमेज बनाओ",
+        "चित्र बनाओ",
+        "तस्वीर बनाओ",
+
+        "photo banao",
+        "photo bana",
+
+        "image banao",
+        "image bana",
+
+        "generate image",
+        "generate photo",
+        "generate a picture",
+
+        "create image",
+        "create a image",
+        "create a picture",
+
+        "make an image",
+        "make image",
+        "make a picture",
+    ]
+
+    prompt = text
+
+    for item in replacements:
+
+        prompt = re.sub(
+            re.escape(item),
+            "",
+            prompt,
+            flags=re.IGNORECASE,
+        )
+
+    prompt = prompt.strip()
+
+    if not prompt:
+
+        prompt = (
+            "Create a beautiful cinematic realistic image "
+            "with detailed lighting and professional photography."
+        )
+
+    return prompt
+
+
+# =========================================================
+# WEB SEARCH
+# =========================================================
+
+def likely_needs_search(text):
+
+    text = text.lower()
+
+    words = [
+
+        "आज",
+        "अभी",
+        "latest",
+        "news",
+        "ताजा खबर",
+
+        "weather",
+        "मौसम",
+
+        "price",
+        "कीमत",
+
+        "rate",
+        "रेट",
+
+        "कौन जीता",
+        "result",
+        "नतीजा",
+
+        "current",
+        "live",
+    ]
+
+    return any(
+        word in text
+        for word in words
+    )
+
+
+def web_search(
+    query,
+    max_results=5
+):
+
+    if DDGS is None:
+
+        return ""
+
+    try:
+
+        results = []
+
+        with DDGS() as ddgs:
+
+            data = ddgs.text(
+                query,
+                max_results=max_results,
+            )
+
+            for item in data:
+
+                title = item.get(
+                    "title",
+                    ""
+                )
+
+                body = item.get(
+                    "body",
+                    ""
+                )
+
+                href = item.get(
+                    "href",
+                    ""
+                )
+
+                results.append(
+                    f"Title: {title}\n"
+                    f"Summary: {body}\n"
+                    f"URL: {href}"
+                )
+
+        return "\n\n".join(
+            results
+        )
+
+    except Exception:
+
+        return ""
+
+
+# =========================================================
+# PDF
+# =========================================================
+
+def extract_pdf_text(
+    uploaded_file
+):
+
+    try:
+
+        reader = PdfReader(
+            uploaded_file
+        )
+
+        pages = []
+
+        for page in reader.pages:
+
+            text = page.extract_text()
+
+            if text:
+
+                pages.append(text)
+
+        return "\n\n".join(
+            pages
+        )
+
+    except Exception as e:
+
+        return (
+            f"PDF पढ़ने में समस्या: {e}"
+        )
+
+
+# =========================================================
+# TXT
+# =========================================================
+
+def extract_txt_text(
+    uploaded_file
+):
+
+    try:
+
+        return uploaded_file.read().decode(
+            "utf-8",
+            errors="ignore",
+        )
+
+    except Exception as e:
+
+        return (
+            f"TXT पढ़ने में समस्या: {e}"
+        )
+
+
+# =========================================================
+# VOICE TRANSCRIPTION
+# =========================================================
+
+def transcribe_audio(
+    audio_file
+):
 
     client = get_groq_client()
 
     if client is None:
 
-        return None, (
-            "GROQ_API_KEY नहीं मिली।"
+        return (
+            "❌ Voice transcription के लिए "
+            "GROQ_API_KEY जरूरी है।"
         )
 
     try:
 
-        audio_bytes = audio_file.read()
-
-        result = client.audio.transcriptions.create(
-            file=(
-                audio_file.name,
-                audio_bytes
-            ),
-            model=WHISPER_MODEL
+        audio_bytes = (
+            audio_file.read()
         )
 
-        return result.text, None
+        file_tuple = (
+            "audio.wav",
+            audio_bytes,
+        )
+
+        transcription = (
+            client.audio.transcriptions.create(
+                file=file_tuple,
+                model=WHISPER_MODEL,
+            )
+        )
+
+        return transcription.text
 
     except Exception as e:
 
-        return None, str(e)
+        return (
+            f"❌ Voice error: {e}"
+        )
 
 
 # =========================================================
 # TEXT TO SPEECH
 # =========================================================
 
-def make_voice(text, language="hi"):
+def make_tts(
+    text,
+    language="hi"
+):
 
     try:
 
-        mp3 = io.BytesIO()
+        output = io.BytesIO()
 
         tts = gTTS(
             text=text,
             lang=language,
-            slow=False
+            slow=False,
         )
 
-        tts.write_to_fp(mp3)
+        tts.write_to_fp(
+            output
+        )
 
-        mp3.seek(0)
+        output.seek(0)
 
-        return mp3.read()
+        return output
 
     except Exception:
 
@@ -1029,16 +1460,147 @@ def make_voice(text, language="hi"):
 
 
 # =========================================================
+# CREATOR
+# =========================================================
+
+def creator_answer():
+
+    return (
+        "✨ जुगनू AI के निर्माता "
+        "**अरविंद सिंह** हैं।\n\n"
+        "👨‍👦 उनके पिता का नाम "
+        "**Mr Rewant Singh** है।\n"
+        "🏡 उनका गाँव **Doojasar** है।\n"
+        "📍 वे अभी **श्री मोहनगढ़** में रहते हैं।"
+    )
+
+
+def is_creator_question(text):
+
+    text = text.lower()
+
+    words = [
+
+        "jugnu ai kisne banaya",
+        "jugnu kisne banaya",
+        "jugnu ai creator",
+        "creator of jugnu",
+        "who created jugnu",
+
+        "जुगनू ai किसने बनाया",
+        "जुगनू किसने बनाया",
+        "जुगनू का निर्माता",
+        "जुगनू ai का निर्माता",
+        "जुगनू एआई किसने बनाया",
+        "निर्माता कौन है",
+    ]
+
+    return any(
+        item in text
+        for item in words
+    )
+
+
+# =========================================================
+# SYSTEM PROMPT
+# =========================================================
+
+def build_system_prompt(
+    username,
+    language,
+    bot_mode,
+    memories
+):
+
+    memory_text = ""
+
+    if memories:
+
+        memory_text = (
+            "\n\nUser memories:\n"
+            + "\n".join(
+                f"- {m}"
+                for m in memories
+            )
+        )
+
+    language_instruction = {
+
+        "Hindi":
+            "मुख्य रूप से हिंदी में जवाब दो।",
+
+        "English":
+            "मुख्य रूप से English में जवाब दो।",
+
+        "Hindi + English":
+            "Hindi और English दोनों का natural मिश्रण रखो।",
+
+    }.get(
+        language,
+        "मुख्य रूप से हिंदी में जवाब दो।",
+    )
+
+    mode_instruction = {
+
+        "दोस्ताना":
+            "दोस्त की तरह friendly और सरल तरीके से जवाब दो।",
+
+        "शिक्षक":
+            "teacher की तरह step-by-step और आसान भाषा में समझाओ।",
+
+        "कहानीकार":
+            "जरूरत पड़ने पर कहानी जैसे interesting तरीके से समझाओ।",
+
+        "मारवाड़ी / राजस्थानी":
+            "जहाँ उचित हो वहाँ राजस्थानी/मारवाड़ी अंदाज में जवाब दो।",
+
+    }.get(
+        bot_mode,
+        "friendly तरीके से जवाब दो।",
+    )
+
+    return f"""
+तुम Jugnu AI हो।
+
+तुम्हें हमेशा helpful, natural और साफ जवाब देना है।
+
+{language_instruction}
+
+{mode_instruction}
+
+Jugnu AI के निर्माता:
+
+नाम: Arvind Singh
+पिता: Mr Rewant Singh
+गाँव: Doojasar
+वर्तमान स्थान: Shri Mohangarh
+
+अगर user creator के बारे में पूछे तो उपलब्ध जानकारी के अनुसार सही उत्तर देना।
+
+गलत जानकारी invent मत करना।
+
+अगर user किसी विषय को सरल तरीके से समझना चाहता है
+तो आसान भाषा में समझाओ।
+
+User username:
+{username}
+
+{memory_text}
+"""
+
+
+# =========================================================
 # GROQ CHAT
 # =========================================================
 
 def ask_groq(
-    user_message,
-    history,
+    user_prompt,
+    conversation_messages,
     username,
-    language="Hindi",
-    bot_mode="Smart",
-    pdf_context="",
+    language,
+    bot_mode,
+    memories,
+    document_context="",
     web_context=""
 ):
 
@@ -1047,205 +1609,433 @@ def ask_groq(
     if client is None:
 
         return (
-            "GROQ_API_KEY नहीं मिली। "
-            "Streamlit Secrets में GROQ_API_KEY check करें।"
+            "❌ GROQ_API_KEY नहीं मिली।\n\n"
+            "Streamlit Cloud → Settings → Secrets में "
+            "`GROQ_API_KEY` डालें।"
         )
 
-    memories = get_memories(username)
+    system_prompt = build_system_prompt(
+        username,
+        language,
+        bot_mode,
+        memories,
+    )
 
-    memory_text = ""
+    if document_context:
 
-    if memories:
-
-        memory_text = "\n".join(
-            [
-                f"- {m['memory']}"
-                for m in memories
-            ]
+        system_prompt += (
+            "\n\nUser uploaded document content:\n"
+            + document_context[:30000]
         )
 
-    system_prompt = f"""
-You are Jugnu AI, a helpful Indian AI assistant.
+    if web_context:
 
-User name: {username}
-
-Language preference: {language}
-
-Bot mode: {bot_mode}
-
-Important creator information:
-Jugnu AI creator is Arvind Singh.
-His father is Mr Rewant Singh.
-Village: Doojasar.
-Current place: Shri Mohangarh.
-
-User memories:
-{memory_text}
-
-PDF/Text context:
-{pdf_context[:30000]}
-
-Web search context:
-{web_context[:15000]}
-
-Instructions:
-- Answer clearly and naturally.
-- Prefer Hindi when the user speaks Hindi.
-- If the user asks in Hinglish, answer in simple Hinglish/Hindi.
-- Do not claim to have searched the web unless web context is actually supplied.
-- Do not invent facts.
-- Keep simple questions concise.
-"""
+        system_prompt += (
+            "\n\nWeb search results:\n"
+            + web_context[:15000]
+        )
 
     messages = [
         {
             "role": "system",
-            "content": system_prompt
+            "content": system_prompt,
         }
     ]
 
-    for item in history[-12:]:
+    for message in conversation_messages[-12:]:
+
+        role = message.get(
+            "role"
+        )
+
+        if role not in [
+            "user",
+            "assistant"
+        ]:
+
+            continue
 
         messages.append(
             {
-                "role": item["role"],
-                "content": item["content"]
+                "role": role,
+                "content": message.get(
+                    "content",
+                    "",
+                ),
             }
         )
 
     messages.append(
         {
             "role": "user",
-            "content": user_message
+            "content": user_prompt,
         }
     )
 
     try:
 
-        completion = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=messages,
-            temperature=0.7
+        response = (
+            client.chat.completions.create(
+                model=DEFAULT_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048,
+            )
         )
 
-        return completion.choices[0].message.content
+        return (
+            response
+            .choices[0]
+            .message
+            .content
+        )
 
     except Exception:
 
         try:
 
-            completion = client.chat.completions.create(
-                model=FALLBACK_CHAT_MODEL,
-                messages=messages,
-                temperature=0.7
+            response = (
+                client.chat.completions.create(
+                    model=FALLBACK_MODEL,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=2048,
+                )
             )
 
-            return completion.choices[0].message.content
+            return (
+                response
+                .choices[0]
+                .message
+                .content
+            )
 
         except Exception as e:
 
-            return f"AI response में समस्या आई: {e}"
+            return (
+                "❌ AI response में समस्या आई:\n\n"
+                + str(e)
+            )
 
 
 # =========================================================
-# INITIALIZE
+# PROCESS PROMPT
 # =========================================================
 
-init_db()
+def process_prompt(
+    prompt,
+    document_context="",
+    web_enabled=False
+):
+
+    prompt = prompt.strip()
+
+    if not prompt:
+
+        return
+
+    username = (
+        st.session_state.username
+    )
+
+    conversation_id = (
+        st.session_state
+        .current_conversation_id
+    )
+
+    # -----------------------------------------------------
+    # USER MESSAGE SAVE
+    # -----------------------------------------------------
+
+    save_message(
+        conversation_id,
+        "user",
+        prompt,
+    )
+
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": prompt,
+        }
+    )
+
+    # -----------------------------------------------------
+    # CREATOR
+    # -----------------------------------------------------
+
+    if is_creator_question(
+        prompt
+    ):
+
+        answer = creator_answer()
+
+        save_message(
+            conversation_id,
+            "assistant",
+            answer,
+        )
+
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+            }
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # IMAGE
+    # -----------------------------------------------------
+
+    if photo_request(
+        prompt
+    ):
+
+        image_prompt = (
+            clean_image_prompt(
+                prompt
+            )
+        )
+
+        with st.spinner(
+            "🎨 जुगनू AI image बना रहा है..."
+        ):
+
+            image_bytes, error = (
+                generate_gemini_image(
+                    image_prompt
+                )
+            )
+
+        if error:
+
+            save_message(
+                conversation_id,
+                "assistant",
+                error,
+            )
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": error,
+                }
+            )
+
+        else:
+
+            answer = (
+                "🎨 आपकी image तैयार है!\n\n"
+                f"Prompt: {image_prompt}"
+            )
+
+            save_message(
+                conversation_id,
+                "assistant",
+                answer,
+            )
+
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": answer,
+                    "image_data": image_bytes,
+                    "image_prompt": image_prompt,
+                }
+            )
+
+        return
+
+    # -----------------------------------------------------
+    # WEB
+    # -----------------------------------------------------
+
+    web_context = ""
+
+    if (
+        web_enabled
+        or likely_needs_search(prompt)
+    ):
+
+        with st.spinner(
+            "🌐 जानकारी खोजी जा रही है..."
+        ):
+
+            web_context = web_search(
+                prompt
+            )
+
+    # -----------------------------------------------------
+    # MEMORY
+    # -----------------------------------------------------
+
+    memories = get_memories(
+        username
+    )
+
+    settings = get_settings(
+        username
+    )
+
+    # -----------------------------------------------------
+    # AI
+    # -----------------------------------------------------
+
+    with st.spinner(
+        "✨ जुगनू सोच रहा है..."
+    ):
+
+        answer = ask_groq(
+            user_prompt=prompt,
+            conversation_messages=(
+                st.session_state.messages[:-1]
+            ),
+            username=username,
+            language=settings["language"],
+            bot_mode=settings["bot_mode"],
+            memories=memories,
+            document_context=document_context,
+            web_context=web_context,
+        )
+
+    # -----------------------------------------------------
+    # SAVE
+    # -----------------------------------------------------
+
+    save_message(
+        conversation_id,
+        "assistant",
+        answer,
+    )
+
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": answer,
+        }
+    )
 
 
 # =========================================================
-# SESSION STATE
+# RENDER MESSAGE
 # =========================================================
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+def render_message(
+    message
+):
 
-if "username" not in st.session_state:
-    st.session_state.username = ""
+    role = message.get(
+        "role"
+    )
 
-if "name" not in st.session_state:
-    st.session_state.name = ""
+    content = message.get(
+        "content",
+        ""
+    )
 
-if "plan" not in st.session_state:
-    st.session_state.plan = ""
+    with st.chat_message(
+        role
+    ):
 
-if "conversation_id" not in st.session_state:
-    st.session_state.conversation_id = None
+        st.markdown(
+            content
+        )
 
-if "pdf_context" not in st.session_state:
-    st.session_state.pdf_context = ""
+        if role == "assistant":
 
-if "uploaded_file_name" not in st.session_state:
-    st.session_state.uploaded_file_name = ""
+            image_data = message.get(
+                "image_data"
+            )
 
-if "last_generated_image" not in st.session_state:
-    st.session_state.last_generated_image = None
+            if image_data:
 
-if "last_generated_prompt" not in st.session_state:
-    st.session_state.last_generated_prompt = ""
+                st.image(
+                    image_data,
+                    use_container_width=True,
+                )
+
+                st.download_button(
+                    "⬇️ Image डाउनलोड करें",
+                    data=image_data,
+                    file_name="jugnu_ai_image.jpg",
+                    mime="image/jpeg",
+                    key="download_"
+                    + str(id(message)),
+                )
 
 
 # =========================================================
 # LOGIN PAGE
 # =========================================================
 
-if not st.session_state.logged_in:
+def login_page():
 
     st.markdown(
         """
-        <div style="text-align:center; padding:40px 0 20px;">
-            <div class="jugnu-title">✨ जुगनू AI</div>
-            <div class="jugnu-subtitle">
-                आपका अपना AI Assistant
-            </div>
+        <div class="jugnu-title">
+            ✨ जुगनू AI
+        </div>
+
+        <div class="jugnu-subtitle">
+            आपका अपना AI Assistant
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     tab1, tab2, tab3 = st.tabs(
         [
             "🔐 Login",
-            "📝 Create Account",
-            "👤 Guest"
+            "📝 Signup",
+            "👤 Guest",
         ]
     )
+
+    # =====================================================
+    # LOGIN
+    # =====================================================
 
     with tab1:
 
         username = st.text_input(
             "Username",
-            key="login_username"
+            key="login_username",
         )
 
         password = st.text_input(
             "Password",
             type="password",
-            key="login_password"
+            key="login_password",
         )
 
         if st.button(
             "Login",
-            use_container_width=True
+            use_container_width=True,
         ):
 
-            user = login_user(
-                username,
-                password
+            username_clean = (
+                username.strip().lower()
             )
 
-            if user:
+            if authenticate(
+                username_clean,
+                password,
+            ):
 
                 st.session_state.logged_in = True
-                st.session_state.username = user["username"]
-                st.session_state.name = user["name"]
-                st.session_state.plan = user["plan"]
 
-                st.session_state.conversation_id = (
-                    create_conversation(
-                        user["username"]
-                    )
+                st.session_state.username = (
+                    username_clean
+                )
+
+                # -----------------------------------------
+                # SAVE LOGIN FOR FUTURE VISITS
+                # -----------------------------------------
+
+                save_login_cookie(
+                    username_clean
                 )
 
                 st.rerun()
@@ -1256,65 +2046,225 @@ if not st.session_state.logged_in:
                     "Username या password गलत है।"
                 )
 
+    # =====================================================
+    # SIGNUP
+    # =====================================================
+
     with tab2:
 
-        new_username = st.text_input(
-            "Username",
-            key="signup_username"
-        )
-
-        new_name = st.text_input(
+        name = st.text_input(
             "आपका नाम",
-            key="signup_name"
+            key="signup_name",
         )
 
-        new_password = st.text_input(
+        username = st.text_input(
+            "Username",
+            key="signup_username",
+        )
+
+        password = st.text_input(
             "Password",
             type="password",
-            key="signup_password"
+            key="signup_password",
+        )
+
+        confirm_password = st.text_input(
+            "Confirm Password",
+            type="password",
+            key="signup_confirm",
         )
 
         if st.button(
-            "Create Account",
-            use_container_width=True
+            "Account बनाएं",
+            use_container_width=True,
         ):
 
-            ok, message = create_user(
-                new_username,
-                new_name,
-                new_password
-            )
+            if (
+                not name
+                or not username
+                or not password
+            ):
 
-            if ok:
-                st.success(message)
+                st.warning(
+                    "सभी fields भरें।"
+                )
+
+            elif (
+                password
+                != confirm_password
+            ):
+
+                st.error(
+                    "दोनों passwords समान नहीं हैं।"
+                )
+
             else:
-                st.error(message)
+
+                ok, message = (
+                    create_user(
+                        username.strip().lower(),
+                        name.strip(),
+                        password,
+                    )
+                )
+
+                if ok:
+
+                    st.success(
+                        "Account बन गया। अब Login करें।"
+                    )
+
+                else:
+
+                    st.error(
+                        message
+                    )
+
+    # =====================================================
+    # GUEST
+    # =====================================================
 
     with tab3:
 
         st.write(
-            "Guest mode में आप basic AI features try कर सकते हैं।"
+            "बिना account के Jugnu AI इस्तेमाल करें।"
         )
 
         if st.button(
-            "Continue as Guest",
-            use_container_width=True
+            "👤 Guest के रूप में जारी रखें",
+            use_container_width=True,
         ):
 
             st.session_state.logged_in = True
-            st.session_state.username = "guest"
-            st.session_state.name = "Guest"
-            st.session_state.plan = "GUEST"
 
-            st.session_state.conversation_id = (
+            st.session_state.username = (
+                "guest"
+            )
+
+            st.session_state.current_conversation_id = (
                 create_conversation(
-                    "guest"
+                    "guest",
+                    "Guest Chat",
                 )
             )
 
+            st.session_state.messages = []
+
+            # Guest login persistent नहीं रखा गया है।
+
             st.rerun()
 
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "logged_in" not in st.session_state:
+
+    st.session_state.logged_in = False
+
+
+if "username" not in st.session_state:
+
+    st.session_state.username = None
+
+
+if "current_conversation_id" not in st.session_state:
+
+    st.session_state.current_conversation_id = None
+
+
+if "messages" not in st.session_state:
+
+    st.session_state.messages = []
+
+
+if "pending_prompt" not in st.session_state:
+
+    st.session_state.pending_prompt = None
+
+
+# =========================================================
+# RESTORE LOGIN FROM COOKIE
+# =========================================================
+
+if not st.session_state.logged_in:
+
+    saved_username = get_login_cookie()
+
+    if saved_username:
+
+        saved_user = get_user(
+            saved_username
+        )
+
+        if saved_user:
+
+            st.session_state.logged_in = True
+
+            st.session_state.username = (
+                saved_username
+            )
+
+        else:
+
+            clear_login_cookie()
+
+
+# =========================================================
+# LOGIN CHECK
+# =========================================================
+
+if not st.session_state.logged_in:
+
+    login_page()
+
     st.stop()
+
+
+# =========================================================
+# CURRENT USER
+# =========================================================
+
+username = (
+    st.session_state.username
+)
+
+user = get_user(
+    username
+)
+
+if user:
+
+    display_name = user["name"]
+
+    plan = user["plan"]
+
+else:
+
+    display_name = "Guest"
+
+    plan = "FREE"
+
+
+# =========================================================
+# FIRST CONVERSATION
+# =========================================================
+
+if (
+    st.session_state
+    .current_conversation_id
+    is None
+):
+
+    st.session_state.current_conversation_id = (
+        create_conversation(
+            username,
+            "नई बातचीत",
+        )
+    )
+
+    st.session_state.messages = []
 
 
 # =========================================================
@@ -1324,119 +2274,495 @@ if not st.session_state.logged_in:
 with st.sidebar:
 
     st.markdown(
-        f"""
-        <div style="font-size:25px;font-weight:800;">
-            ✨ जुगनू AI
-        </div>
-        <div class="jugnu-small">
-            आपका अपना AI Assistant
-        </div>
-        """,
-        unsafe_allow_html=True
+        "## ✨ जुगनू AI"
     )
-
-    st.divider()
 
     st.markdown(
         f"""
-        <div class="vip-box">
-            <b>👤 {st.session_state.name}</b><br>
-            <span class="jugnu-small">
-                @{st.session_state.username}
-            </span><br><br>
-            <b>Plan:</b> {st.session_state.plan}
+        <div class="user-card">
+            <b>👤 {display_name}</b><br>
+            <small>@{username}</small><br>
+            <small>Plan: {plan}</small>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    st.write("")
+    # =====================================================
+    # NEW CHAT
+    # =====================================================
 
     if st.button(
-        "➕ New Chat",
-        use_container_width=True
+        "➕ नई चैट",
+        use_container_width=True,
     ):
 
-        st.session_state.conversation_id = (
+        st.session_state.current_conversation_id = (
             create_conversation(
-                st.session_state.username
+                username,
+                "नई बातचीत",
             )
         )
 
+        st.session_state.messages = []
+
         st.rerun()
 
-    if st.button(
-        "🗑️ Delete Current Chat",
-        use_container_width=True
+    st.divider()
+
+    # =====================================================
+    # WEB
+    # =====================================================
+
+    web_enabled = st.toggle(
+        "🌐 Web Search",
+        value=False,
+    )
+
+    # =====================================================
+    # VOICE
+    # =====================================================
+
+    voice_response = st.toggle(
+        "🔊 Voice Response",
+        value=False,
+    )
+
+    # =====================================================
+    # SETTINGS
+    # =====================================================
+
+    with st.expander(
+        "⚙️ Settings"
     ):
 
-        if st.session_state.conversation_id:
+        settings = get_settings(
+            username
+        )
 
-            delete_conversation(
-                st.session_state.conversation_id
+        languages = [
+            "Hindi",
+            "English",
+            "Hindi + English",
+        ]
+
+        current_language = (
+            settings["language"]
+            if settings["language"]
+            in languages
+            else "Hindi"
+        )
+
+        language = st.selectbox(
+            "Language",
+            languages,
+            index=languages.index(
+                current_language
+            ),
+        )
+
+        modes = [
+            "दोस्ताना",
+            "शिक्षक",
+            "कहानीकार",
+            "मारवाड़ी / राजस्थानी",
+        ]
+
+        current_mode = (
+            settings["bot_mode"]
+            if settings["bot_mode"]
+            in modes
+            else "दोस्ताना"
+        )
+
+        bot_mode = st.selectbox(
+            "Bot Mode",
+            modes,
+            index=modes.index(
+                current_mode
+            ),
+        )
+
+        speeds = [
+            "सामान्य",
+            "धीमी",
+        ]
+
+        current_speed = (
+            settings["voice_speed"]
+            if settings["voice_speed"]
+            in speeds
+            else "सामान्य"
+        )
+
+        voice_speed = st.selectbox(
+            "Voice Speed",
+            speeds,
+            index=speeds.index(
+                current_speed
+            ),
+        )
+
+        if st.button(
+            "💾 Settings Save",
+            use_container_width=True,
+        ):
+
+            save_settings(
+                username,
+                language,
+                bot_mode,
+                voice_speed,
             )
 
-            st.session_state.conversation_id = (
+            st.success(
+                "Settings save हो गईं।"
+            )
+
+        # =================================================
+        # PASSWORD
+        # =================================================
+
+        st.markdown(
+            "### 🔐 Password बदलें"
+        )
+
+        old_password = st.text_input(
+            "पुराना Password",
+            type="password",
+            key="old_password",
+        )
+
+        new_password = st.text_input(
+            "नया Password",
+            type="password",
+            key="new_password",
+        )
+
+        if st.button(
+            "Password बदलें",
+            use_container_width=True,
+        ):
+
+            if authenticate(
+                username,
+                old_password,
+            ):
+
+                conn = get_db()
+
+                conn.execute(
+                    """
+                    UPDATE auth_users
+                    SET password_hash=?
+                    WHERE username=?
+                    """,
+                    (
+                        hash_password(
+                            new_password
+                        ),
+                        username,
+                    ),
+                )
+
+                conn.commit()
+
+                conn.close()
+
+                st.success(
+                    "Password बदल गया।"
+                )
+
+            else:
+
+                st.error(
+                    "पुराना password गलत है।"
+                )
+
+        # =================================================
+        # DELETE CHAT
+        # =================================================
+
+        if st.button(
+            "🗑️ Current Chat Delete",
+            use_container_width=True,
+        ):
+
+            delete_conversation(
+                st.session_state
+                .current_conversation_id
+            )
+
+            st.session_state.current_conversation_id = (
                 create_conversation(
-                    st.session_state.username
+                    username,
+                    "नई बातचीत",
                 )
             )
 
+            st.session_state.messages = []
+
             st.rerun()
 
-    st.divider()
+    # =====================================================
+    # MEMORY
+    # =====================================================
 
-    st.subheader("💬 Chat History")
+    with st.expander(
+        "🧠 Memory"
+    ):
 
-    conversations = get_conversations(
-        st.session_state.username
-    )
+        memories = get_memories(
+            username
+        )
 
-    for conversation in conversations[:15]:
-
-        title = conversation["title"]
-
-        if len(title) > 28:
-            title = title[:28] + "..."
+        memory_input = st.text_input(
+            "कुछ याद रखना है?",
+            placeholder=(
+                "जैसे: मुझे हिंदी में जवाब पसंद है"
+            ),
+        )
 
         if st.button(
-            f"💬 {title}",
-            key=f"conversation_{conversation['id']}",
-            use_container_width=True
+            "Memory Save",
+            use_container_width=True,
         ):
 
-            st.session_state.conversation_id = (
-                conversation["id"]
+            if memory_input.strip():
+
+                save_memory(
+                    username,
+                    memory_input,
+                )
+
+                st.success(
+                    "Memory save हो गई।"
+                )
+
+                st.rerun()
+
+        if memories:
+
+            st.markdown(
+                "### Saved Memories"
             )
 
-            st.rerun()
+            for index, memory in enumerate(
+                memories
+            ):
 
-    st.divider()
+                st.write(
+                    "• " + memory
+                )
 
-    page = st.radio(
-        "Menu",
-        [
-            "💬 Chat",
-            "🎨 AI Image Generator",
-            "📄 PDF / Text Reader",
-            "🧠 Memory",
-            "⚙️ Settings",
-            "👑 VIP Dashboard"
-        ]
+                if st.button(
+                    "Delete",
+                    key=(
+                        "memory_"
+                        + str(index)
+                        + "_"
+                        + str(abs(hash(memory)))
+                    ),
+                ):
+
+                    delete_memory(
+                        username,
+                        memory,
+                    )
+
+                    st.rerun()
+
+    # =====================================================
+    # REMINDERS
+    # =====================================================
+
+    with st.expander(
+        "⏰ Reminders / Diary"
+    ):
+
+        task = st.text_input(
+            "काम / Reminder",
+        )
+
+        remind_at = st.text_input(
+            "Date / Time",
+            placeholder=(
+                "जैसे 10 Oct 2026 10:00"
+            ),
+        )
+
+        if st.button(
+            "Reminder Save",
+            use_container_width=True,
+        ):
+
+            if task.strip():
+
+                save_note(
+                    username,
+                    task,
+                    remind_at,
+                )
+
+                st.success(
+                    "Reminder save हो गया।"
+                )
+
+                st.rerun()
+
+        notes = get_notes(
+            username
+        )
+
+        for note in notes:
+
+            status = (
+                "✅"
+                if note["done"]
+                else "⏳"
+            )
+
+            st.write(
+                f"{status} {note['task']}"
+            )
+
+            if note["remind_at"]:
+
+                st.caption(
+                    note["remind_at"]
+                )
+
+            if not note["done"]:
+
+                if st.button(
+                    "Done",
+                    key=(
+                        "note_"
+                        + str(note["id"])
+                    ),
+                ):
+
+                    mark_note_done(
+                        note["id"]
+                    )
+
+                    st.rerun()
+
+    # =====================================================
+    # CHAT HISTORY
+    # =====================================================
+
+    with st.expander(
+        "🕘 Chat History"
+    ):
+
+        conversations = (
+            get_conversations(
+                username
+            )
+        )
+
+        for conversation in conversations[:30]:
+
+            if st.button(
+                conversation["title"][:35],
+                key=(
+                    "conversation_"
+                    + str(conversation["id"])
+                ),
+                use_container_width=True,
+            ):
+
+                st.session_state.current_conversation_id = (
+                    conversation["id"]
+                )
+
+                st.session_state.messages = (
+                    load_messages(
+                        conversation["id"]
+                    )
+                )
+
+                st.rerun()
+
+    # =====================================================
+    # VIP
+    # =====================================================
+
+    with st.expander(
+        "👑 VIP Dashboard"
+    ):
+
+        st.write(
+            "Plan:",
+            plan,
+        )
+
+        st.write(
+            "✨ AI Chat"
+        )
+
+        st.write(
+            "🎨 Gemini Image Generation"
+        )
+
+        st.write(
+            "🌐 Web Search"
+        )
+
+        st.write(
+            "📄 PDF Reading"
+        )
+
+        st.write(
+            "🎤 Voice Input"
+        )
+
+        st.write(
+            "🧠 Memory"
+        )
+
+    # =====================================================
+    # CREATOR
+    # =====================================================
+
+    st.markdown(
+        """
+        <div class="creator-card">
+        <b>जुगनू AI निर्माता</b><br><br>
+        Arvind Singh<br>
+        Father: Mr Rewant Singh<br>
+        Village: Doojasar<br>
+        Current: Shri Mohangarh
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.divider()
+
+    # =====================================================
+    # LOGOUT
+    # =====================================================
 
     if st.button(
         "🚪 Logout",
-        use_container_width=True
+        use_container_width=True,
     ):
 
+        # ---------------------------------------------
+        # REMOVE PERSISTENT LOGIN
+        # ---------------------------------------------
+
+        clear_login_cookie()
+
         st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.session_state.name = ""
-        st.session_state.plan = ""
-        st.session_state.conversation_id = None
+
+        st.session_state.username = None
+
+        st.session_state.messages = []
+
+        st.session_state.current_conversation_id = None
 
         st.rerun()
 
@@ -1446,931 +2772,455 @@ with st.sidebar:
 # =========================================================
 
 st.markdown(
-    f"""
-    <div>
-        <div class="jugnu-title">✨ जुगनू AI</div>
-        <div class="jugnu-subtitle">
-            नमस्ते {st.session_state.name} 👋
-        </div>
+    """
+    <div class="jugnu-title">
+        ✨ जुगनू AI
+    </div>
+
+    <div class="jugnu-subtitle">
+        आपका अपना AI Assistant
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-st.write("")
-
 
 # =========================================================
-# CHAT PAGE
+# WELCOME
 # =========================================================
 
-if page == "💬 Chat":
+if not st.session_state.messages:
 
     st.markdown(
-        """
-        <div class="jugnu-card">
-        <b>जुगनू AI से कुछ भी पूछें</b><br>
-        <span class="jugnu-small">
-        सवाल पूछें, PDF पढ़वाएँ, web search करें,
-        image बनवाएँ या voice से बात करें।
-        </span>
+        f"""
+        <div style="
+            text-align:center;
+            padding:25px;
+        ">
+            <h2>नमस्ते {display_name}! 👋</h2>
+            <p>
+            मैं जुगनू AI हूँ।
+            आप मुझसे कुछ भी पूछ सकते हैं।
+            </p>
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    # -----------------------------------------------------
-    # Current messages
-    # -----------------------------------------------------
 
-    if st.session_state.conversation_id:
+# =========================================================
+# QUICK ACTIONS
+# =========================================================
 
-        messages = get_messages(
-            st.session_state.conversation_id
+st.markdown(
+    "### ⚡ Quick Actions"
+)
+
+quick_cols = st.columns(4)
+
+quick_actions = [
+
+    (
+        "👨‍💻 Creator",
+        "जुगनू AI किसने बनाया?"
+    ),
+
+    (
+        "🕐 Time",
+        "अभी समय क्या है?"
+    ),
+
+    (
+        "🌦️ Weather",
+        "आज का मौसम कैसा है?"
+    ),
+
+    (
+        "🎨 Photo",
+        "राजस्थान के रेगिस्तान की cinematic realistic photo बनाओ"
+    ),
+
+    (
+        "😂 Joke",
+        "एक मजेदार joke सुनाओ"
+    ),
+
+    (
+        "🧠 Quiz",
+        "मेरा एक सामान्य ज्ञान quiz लो"
+    ),
+
+    (
+        "❤️ Health",
+        "स्वस्थ रहने के लिए सामान्य tips बताओ"
+    ),
+
+    (
+        "🏜️ Marwari",
+        "मुझसे मारवाड़ी में बात करो"
+    ),
+]
+
+
+for index, (
+    label,
+    quick_prompt
+) in enumerate(
+    quick_actions
+):
+
+    with quick_cols[
+        index % 4
+    ]:
+
+        if st.button(
+            label,
+            key=(
+                "quick_"
+                + str(index)
+            ),
+            use_container_width=True,
+        ):
+
+            process_prompt(
+                quick_prompt,
+                web_enabled=web_enabled,
+            )
+
+            st.rerun()
+
+
+# =========================================================
+# IMAGE GENERATOR
+# =========================================================
+
+st.markdown("---")
+
+with st.expander(
+    "🎨 AI Image Generator — Gemini"
+):
+
+    st.write(
+        "Prompt लिखें और जुगनू AI से वास्तविक image बनवाएँ।"
+    )
+
+    image_prompt = st.text_area(
+        "Image Prompt",
+        placeholder=(
+            "उदाहरण: राजस्थान के रेगिस्तान में "
+            "सूर्यास्त के समय एक शानदार सफेद SUV, "
+            "cinematic realistic photography"
+        ),
+        key="image_generator_prompt",
+    )
+
+    image_col1, image_col2 = st.columns(
+        [3, 1]
+    )
+
+    with image_col2:
+
+        generate_button = st.button(
+            "🎨 Generate",
+            use_container_width=True,
         )
 
-        for message in messages:
+    if generate_button:
 
-            role = message["role"]
-            content = message["content"]
+        if not image_prompt.strip():
 
-            if role == "user":
+            st.warning(
+                "पहले image prompt लिखें।"
+            )
 
-                st.markdown(
-                    f"""
-                    <div class="jugnu-user">
-                    <b>आप</b><br>
-                    {escape_text(content)}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+        else:
+
+            with st.spinner(
+                "🎨 Gemini image बना रहा है..."
+            ):
+
+                image_bytes, error = (
+                    generate_gemini_image(
+                        image_prompt
+                    )
+                )
+
+            if error:
+
+                st.error(
+                    error
                 )
 
             else:
 
-                st.markdown(
-                    f"""
-                    <div class="jugnu-ai">
-                    <b>✨ जुगनू AI</b><br>
-                    {escape_text(content)}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                st.image(
+                    image_bytes,
+                    caption="✨ Jugnu AI",
+                    use_container_width=True,
                 )
 
-    st.divider()
+                st.download_button(
+                    "⬇️ Image Download",
+                    data=image_bytes,
+                    file_name=(
+                        "jugnu_ai_generated.jpg"
+                    ),
+                    mime="image/jpeg",
+                    use_container_width=True,
+                )
 
-    # -----------------------------------------------------
-    # Quick actions
-    # -----------------------------------------------------
 
-    st.markdown("### ⚡ Quick Actions")
+# =========================================================
+# DOCUMENT UPLOAD
+# =========================================================
 
-    q1, q2, q3, q4 = st.columns(4)
+st.markdown("---")
 
-    with q1:
+tool_cols = st.columns(3)
 
-        if st.button(
-            "🎨 Image",
-            use_container_width=True
+document_context = ""
+
+with tool_cols[0]:
+
+    uploaded_document = st.file_uploader(
+        "📄 PDF / TXT",
+        type=[
+            "pdf",
+            "txt",
+        ],
+    )
+
+    if uploaded_document:
+
+        if (
+            uploaded_document
+            .name
+            .lower()
+            .endswith(".pdf")
         ):
 
-            st.session_state.quick_prompt = (
-                "एक सुंदर राजस्थान के रेगिस्तान में "
-                "सूर्यास्त की realistic image बनाओ"
+            document_context = (
+                extract_pdf_text(
+                    uploaded_document
+                )
             )
 
-    with q2:
+        else:
 
-        if st.button(
-            "🌐 Web Search",
-            use_container_width=True
-        ):
-
-            st.session_state.quick_prompt = (
-                "आज की latest important news बताओ"
+            document_context = (
+                extract_txt_text(
+                    uploaded_document
+                )
             )
 
-    with q3:
+        st.success(
+            "Document तैयार है। अब सवाल पूछें।"
+        )
 
-        if st.button(
-            "💡 Idea",
-            use_container_width=True
-        ):
 
-            st.session_state.quick_prompt = (
-                "मुझे एक नया business idea बताओ"
+# =========================================================
+# IMAGE UPLOAD
+# =========================================================
+
+with tool_cols[1]:
+
+    uploaded_image = st.file_uploader(
+        "🖼️ Image Upload",
+        type=[
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+        ],
+    )
+
+    if uploaded_image:
+
+        try:
+
+            image = Image.open(
+                uploaded_image
             )
 
-    with q4:
-
-        if st.button(
-            "📚 Study",
-            use_container_width=True
-        ):
-
-            st.session_state.quick_prompt = (
-                "मुझे पढ़ाई के लिए एक simple study plan बनाओ"
+            st.image(
+                image,
+                caption="Uploaded Image",
+                use_container_width=True,
             )
 
-    # -----------------------------------------------------
-    # Voice input
-    # -----------------------------------------------------
+        except Exception:
 
-    st.markdown("### 🎤 Voice Input")
+            st.error(
+                "Image पढ़ने में समस्या आई।"
+            )
+
+
+# =========================================================
+# VOICE INPUT
+# =========================================================
+
+with tool_cols[2]:
 
     audio_file = st.file_uploader(
-        "अपनी voice recording upload करें",
+        "🎤 Voice Input",
         type=[
             "wav",
             "mp3",
             "m4a",
             "ogg",
-            "webm"
+            "webm",
         ],
-        key="chat_audio"
     )
-
-    voice_prompt = ""
 
     if audio_file:
 
         if st.button(
-            "🎤 Voice को Text में बदलें"
+            "🎤 Voice को Text में बदलें",
+            use_container_width=True,
         ):
 
             with st.spinner(
-                "Voice समझी जा रही है..."
+                "🎤 Voice समझी जा रही है..."
             ):
 
-                voice_prompt, error = (
+                transcribed = (
                     transcribe_audio(
                         audio_file
                     )
                 )
 
-            if error:
+            st.session_state.pending_prompt = (
+                transcribed
+            )
 
-                st.error(error)
+            st.success(
+                "Voice text तैयार है। नीचे chat में भेजें।"
+            )
 
-            else:
 
-                st.success(
-                    f"आपने कहा: {voice_prompt}"
-                )
+# =========================================================
+# CHAT HISTORY DISPLAY
+# =========================================================
 
-                st.session_state.quick_prompt = (
-                    voice_prompt
-                )
+for message in (
+    st.session_state.messages
+):
 
-    # -----------------------------------------------------
-    # File upload
-    # -----------------------------------------------------
-
-    uploaded_chat_file = st.file_uploader(
-        "📎 PDF / TXT attach करें",
-        type=[
-            "pdf",
-            "txt"
-        ],
-        key="chat_document"
+    render_message(
+        message
     )
 
-    if uploaded_chat_file:
 
-        if uploaded_chat_file.name != (
-            st.session_state.uploaded_file_name
-        ):
+# =========================================================
+# VOICE TRANSCRIPTION RESULT
+# =========================================================
 
-            if uploaded_chat_file.name.lower().endswith(
-                ".pdf"
-            ):
+if st.session_state.pending_prompt:
 
-                text = extract_pdf_text(
-                    uploaded_chat_file
-                )
-
-            else:
-
-                text = extract_text_file(
-                    uploaded_chat_file
-                )
-
-            st.session_state.pdf_context = text
-            st.session_state.uploaded_file_name = (
-                uploaded_chat_file.name
-            )
-
-        st.success(
-            f"📄 {uploaded_chat_file.name} तैयार है।"
-        )
-
-    # -----------------------------------------------------
-    # Chat input
-    # -----------------------------------------------------
-
-    default_prompt = st.session_state.pop(
-        "quick_prompt",
-        ""
+    st.info(
+        "🎤 Voice text: "
+        + st.session_state.pending_prompt
     )
 
-    user_prompt = st.chat_input(
-        "जुगनू से कुछ पूछें..."
-    )
+    if st.button(
+        "📤 यह message भेजें"
+    ):
 
-    if not user_prompt and default_prompt:
-
-        user_prompt = default_prompt
-
-    if user_prompt:
-
-        user_prompt = user_prompt.strip()
-
-        if not st.session_state.conversation_id:
-
-            st.session_state.conversation_id = (
-                create_conversation(
-                    st.session_state.username
-                )
-            )
-
-        save_message(
-            st.session_state.conversation_id,
-            st.session_state.username,
-            "user",
-            user_prompt
+        prompt = (
+            st.session_state.pending_prompt
         )
 
-        # -------------------------------------------------
-        # IMAGE GENERATION
-        # -------------------------------------------------
+        st.session_state.pending_prompt = None
 
-        if is_image_request(user_prompt):
-
-            st.markdown(
-                f"""
-                <div class="jugnu-user">
-                <b>आप</b><br>
-                {escape_text(user_prompt)}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            with st.spinner(
-                "🎨 Gemini image बना रहा है..."
-            ):
-
-                image, error = (
-                    generate_image_with_gemini(
-                        user_prompt
-                    )
-                )
-
-            if error:
-
-                st.error(
-                    f"Image generation में समस्या आई:\n\n{error}"
-                )
-
-            elif image:
-
-                st.markdown(
-                    "### 🎨 आपकी AI Image"
-                )
-
-                st.image(
-                    image,
-                    use_container_width=True
-                )
-
-                # Save image into bytes for download
-                image_buffer = io.BytesIO()
-
-                image.save(
-                    image_buffer,
-                    format="JPEG",
-                    quality=95
-                )
-
-                image_bytes = image_buffer.getvalue()
-
-                st.download_button(
-                    "⬇️ Download Image",
-                    data=image_bytes,
-                    file_name="jugnu_ai_image.jpg",
-                    mime="image/jpeg",
-                    use_container_width=True
-                )
-
-                st.session_state.last_generated_image = (
-                    image_bytes
-                )
-
-                st.session_state.last_generated_prompt = (
-                    user_prompt
-                )
-
-            st.stop()
-
-        # -------------------------------------------------
-        # CREATOR ANSWER
-        # -------------------------------------------------
-
-        special = creator_answer(
-            user_prompt
+        process_prompt(
+            prompt,
+            document_context=document_context,
+            web_enabled=web_enabled,
         )
-
-        if special:
-
-            answer = special
-
-        else:
-
-            # -------------------------------------------------
-            # WEB SEARCH
-            # -------------------------------------------------
-
-            web_context = ""
-
-            search_words = [
-                "latest",
-                "today",
-                "news",
-                "weather",
-                "price",
-                "current",
-                "आज",
-                "ताजा",
-                "लेटेस्ट",
-                "कीमत",
-                "मौसम"
-            ]
-
-            should_search = any(
-                word in user_prompt.lower()
-                for word in search_words
-            )
-
-            if should_search:
-
-                with st.spinner(
-                    "🌐 Web search हो रही है..."
-                ):
-
-                    web_context = web_search(
-                        user_prompt
-                    )
-
-            # -------------------------------------------------
-            # HISTORY
-            # -------------------------------------------------
-
-            old_messages = get_messages(
-                st.session_state.conversation_id
-            )
-
-            history = []
-
-            for item in old_messages:
-
-                history.append(
-                    {
-                        "role": item["role"],
-                        "content": item["content"]
-                    }
-                )
-
-            settings = get_settings(
-                st.session_state.username
-            )
-
-            answer = ask_groq(
-                user_prompt,
-                history,
-                st.session_state.username,
-                settings["language"],
-                settings["bot_mode"],
-                st.session_state.pdf_context,
-                web_context
-            )
-
-        save_message(
-            st.session_state.conversation_id,
-            st.session_state.username,
-            "assistant",
-            answer
-        )
-
-        # First question becomes chat title
-        current_messages = get_messages(
-            st.session_state.conversation_id
-        )
-
-        if len(current_messages) <= 2:
-
-            update_conversation_title(
-                st.session_state.conversation_id,
-                user_prompt
-            )
 
         st.rerun()
 
 
 # =========================================================
-# IMAGE GENERATOR PAGE
+# CHAT INPUT
 # =========================================================
 
-elif page == "🎨 AI Image Generator":
+prompt = st.chat_input(
+    "जुगनू से कुछ भी पूछें..."
+)
 
-    st.header("🎨 AI Image Generator")
 
-    st.write(
-        "Gemini AI से अपनी पसंद की image बनाइए।"
+if prompt:
+
+    process_prompt(
+        prompt,
+        document_context=document_context,
+        web_enabled=web_enabled,
     )
 
-    prompt = st.text_area(
-        "Image के बारे में लिखें",
-        height=130,
-        placeholder=(
-            "उदाहरण: राजस्थान के रेगिस्तान में "
-            "एक शानदार sunset, cinematic realistic photography"
-        )
-    )
+    # =====================================================
+    # VOICE RESPONSE
+    # =====================================================
 
-    c1, c2 = st.columns(2)
+    if voice_response:
 
-    with c1:
+        if st.session_state.messages:
 
-        aspect = st.selectbox(
-            "Aspect Ratio",
-            [
-                "1:1",
-                "16:9",
-                "9:16",
-                "4:3",
-                "3:4"
-            ]
-        )
-
-    with c2:
-
-        style = st.selectbox(
-            "Style",
-            [
-                "Realistic",
-                "Cinematic",
-                "Anime",
-                "Digital Art",
-                "3D",
-                "Painting",
-                "Professional Photography"
-            ]
-        )
-
-    if st.button(
-        "✨ Generate Image",
-        type="primary",
-        use_container_width=True
-    ):
-
-        if not prompt.strip():
-
-            st.warning(
-                "पहले image का prompt लिखें।"
+            last_message = (
+                st.session_state.messages[-1]
             )
 
-        else:
-
-            final_prompt = (
-                f"{prompt}\n\n"
-                f"Style: {style}\n"
-                f"Aspect ratio: {aspect}\n"
-                "Create a high quality detailed image."
-            )
-
-            with st.spinner(
-                "🎨 Gemini image बना रहा है..."
+            if (
+                last_message["role"]
+                == "assistant"
             ):
 
-                image, error = (
-                    generate_image_with_gemini(
-                        final_prompt
+                answer = (
+                    last_message["content"]
+                )
+
+                tts_language = "hi"
+
+                settings = get_settings(
+                    username
+                )
+
+                if (
+                    settings["language"]
+                    == "English"
+                ):
+
+                    tts_language = "en"
+
+                audio = make_tts(
+                    answer,
+                    tts_language,
+                )
+
+                if audio:
+
+                    st.audio(
+                        audio,
+                        format="audio/mp3",
                     )
-                )
 
-            if error:
-
-                st.error(
-                    f"Image generation में समस्या आई:\n\n{error}"
-                )
-
-            elif image:
-
-                st.image(
-                    image,
-                    use_container_width=True
-                )
-
-                image_buffer = io.BytesIO()
-
-                image.save(
-                    image_buffer,
-                    format="JPEG",
-                    quality=95
-                )
-
-                image_bytes = image_buffer.getvalue()
-
-                st.download_button(
-                    "⬇️ Download Image",
-                    data=image_bytes,
-                    file_name="jugnu_generated_image.jpg",
-                    mime="image/jpeg",
-                    use_container_width=True
-                )
-
-
-# =========================================================
-# PDF / TEXT READER
-# =========================================================
-
-elif page == "📄 PDF / Text Reader":
-
-    st.header("📄 PDF / Text Reader")
-
-    st.write(
-        "PDF या TXT file upload करके उसका text पढ़ें।"
-    )
-
-    file = st.file_uploader(
-        "File upload करें",
-        type=[
-            "pdf",
-            "txt"
-        ],
-        key="reader_file"
-    )
-
-    if file:
-
-        if file.name.lower().endswith(".pdf"):
-
-            text = extract_pdf_text(file)
-
-        else:
-
-            text = extract_text_file(file)
-
-        if text:
-
-            st.success(
-                f"{file.name} पढ़ ली गई।"
-            )
-
-            st.text_area(
-                "Extracted Text",
-                text,
-                height=450
-            )
-
-            st.session_state.pdf_context = text
-
-            st.info(
-                "अब Chat में इस document के बारे में सवाल पूछ सकते हैं।"
-            )
-
-        else:
-
-            st.warning(
-                "इस file से text नहीं मिला।"
-            )
-
-
-# =========================================================
-# MEMORY
-# =========================================================
-
-elif page == "🧠 Memory":
-
-    st.header("🧠 जुगनू की Memory")
-
-    st.write(
-        "यहाँ ऐसी बातें save कर सकते हैं जिन्हें "
-        "जुगनू future chats में उपयोग कर सके।"
-    )
-
-    memory = st.text_area(
-        "क्या याद रखना है?",
-        placeholder=(
-            "उदाहरण: मुझे हमेशा आसान हिंदी में जवाब चाहिए।"
-        )
-    )
-
-    if st.button(
-        "💾 Memory Save करें",
-        use_container_width=True
-    ):
-
-        if memory.strip():
-
-            add_memory(
-                st.session_state.username,
-                memory
-            )
-
-            st.success(
-                "Memory save हो गई।"
-            )
-
-            st.rerun()
-
-        else:
-
-            st.warning(
-                "पहले कुछ लिखें।"
-            )
-
-    st.divider()
-
-    st.subheader("Saved Memories")
-
-    memories = get_memories(
-        st.session_state.username
-    )
-
-    if memories:
-
-        for item in memories:
-
-            st.markdown(
-                f"""
-                <div class="jugnu-card">
-                🧠 {escape_text(item["memory"])}
-                <div class="jugnu-small">
-                {item["created_at"]}
-                </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-    else:
-
-        st.info(
-            "अभी कोई memory save नहीं है।"
-        )
-
-
-# =========================================================
-# SETTINGS
-# =========================================================
-
-elif page == "⚙️ Settings":
-
-    st.header("⚙️ Settings")
-
-    settings = get_settings(
-        st.session_state.username
-    )
-
-    language = st.selectbox(
-        "Language",
-        [
-            "Hindi",
-            "Hinglish",
-            "English"
-        ],
-        index=[
-            "Hindi",
-            "Hinglish",
-            "English"
-        ].index(
-            settings["language"]
-        )
-        if settings["language"] in [
-            "Hindi",
-            "Hinglish",
-            "English"
-        ]
-        else 0
-    )
-
-    bot_mode = st.selectbox(
-        "Bot Mode",
-        [
-            "Smart",
-            "Friendly",
-            "Professional",
-            "Short Answers"
-        ],
-        index=[
-            "Smart",
-            "Friendly",
-            "Professional",
-            "Short Answers"
-        ].index(
-            settings["bot_mode"]
-        )
-        if settings["bot_mode"] in [
-            "Smart",
-            "Friendly",
-            "Professional",
-            "Short Answers"
-        ]
-        else 0
-    )
-
-    voice_speed = st.slider(
-        "Voice Speed",
-        1,
-        2,
-        int(settings["voice_speed"])
-    )
-
-    if st.button(
-        "💾 Save Settings",
-        use_container_width=True
-    ):
-
-        save_settings(
-            st.session_state.username,
-            language,
-            bot_mode,
-            voice_speed
-        )
-
-        st.success(
-            "Settings save हो गई।"
-        )
-
-    st.divider()
-
-    st.subheader("🔐 Change Password")
-
-    old_password = st.text_input(
-        "Old Password",
-        type="password"
-    )
-
-    new_password = st.text_input(
-        "New Password",
-        type="password"
-    )
-
-    confirm_password = st.text_input(
-        "Confirm New Password",
-        type="password"
-    )
-
-    if st.button(
-        "Change Password",
-        use_container_width=True
-    ):
-
-        if new_password != confirm_password:
-
-            st.error(
-                "New password और confirm password अलग हैं।"
-            )
-
-        else:
-
-            ok, message = change_password(
-                st.session_state.username,
-                old_password,
-                new_password
-            )
-
-            if ok:
-                st.success(message)
-            else:
-                st.error(message)
-
-    st.divider()
-
-    st.subheader("ℹ️ About Jugnu AI")
-
-    st.markdown(
-        """
-        **जुगनू AI**
-
-        आपका अपना AI Assistant.
-
-        Features:
-        - AI Chat
-        - Gemini AI Image Generation
-        - Voice Input
-        - Voice Response
-        - PDF Reader
-        - Text Reader
-        - Web Search
-        - Memory
-        - Chat History
-        - Login / Signup
-        - Settings
-        """
-    )
-
-    st.markdown(
-        """
-        <div class="creator-box">
-        <b>निर्माता</b><br><br>
-        Arvind Singh<br>
-        Father: Mr Rewant Singh<br>
-        Village: Doojasar<br>
-        Current: Shri Mohangarh
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# =========================================================
-# VIP DASHBOARD
-# =========================================================
-
-elif page == "👑 VIP Dashboard":
-
-    st.header("👑 VIP Dashboard")
-
-    st.markdown(
-        f"""
-        <div class="vip-box">
-            <h3>✨ {st.session_state.name}</h3>
-            <b>Username:</b> @{st.session_state.username}<br>
-            <b>Plan:</b> {st.session_state.plan}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.write("")
-
-    col1, col2, col3 = st.columns(3)
-
-    conversations = get_conversations(
-        st.session_state.username
-    )
-
-    memories = get_memories(
-        st.session_state.username
-    )
-
-    with col1:
-
-        st.metric(
-            "💬 Chats",
-            len(conversations)
-        )
-
-    with col2:
-
-        st.metric(
-            "🧠 Memories",
-            len(memories)
-        )
-
-    with col3:
-
-        st.metric(
-            "👑 Plan",
-            st.session_state.plan
-        )
-
-    st.divider()
-
-    st.subheader("🚀 Available Features")
-
-    features = [
-        "✅ AI Chat",
-        "✅ Gemini AI Image Generation",
-        "✅ Voice Input",
-        "✅ PDF / TXT Reading",
-        "✅ Web Search",
-        "✅ Memory",
-        "✅ Chat History",
-        "✅ Login / Signup",
-        "✅ Settings",
-        "✅ Password Change"
-    ]
-
-    for feature in features:
-
-        st.write(feature)
+    st.rerun()
 
 
 # =========================================================
 # FOOTER
 # =========================================================
 
-st.divider()
-
 st.markdown(
     """
-    <div style="text-align:center;color:#888;font-size:13px;">
-        ✨ जुगनू AI — आपका अपना AI Assistant
+    <div style="
+        text-align:center;
+        color:#888;
+        font-size:12px;
+        margin-top:40px;
+    ">
+        ✨ Jugnu AI • Made with ❤️
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
