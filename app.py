@@ -40,10 +40,143 @@ st.set_page_config(
 
 
 # =========================================================
+# CHATGPT-LIKE UI
+# =========================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* ---------- GLOBAL ---------- */
+
+    .stApp {
+        background: #ffffff;
+    }
+
+    [data-testid="stSidebar"] {
+        background: #f7f7f8;
+        border-right: 1px solid #e5e5e5;
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem;
+    }
+
+    /* ---------- SIDEBAR ---------- */
+
+    .jugnu-logo {
+        font-size: 25px;
+        font-weight: 800;
+        margin-bottom: 2px;
+    }
+
+    .jugnu-subtitle {
+        color: #777;
+        font-size: 12px;
+        margin-bottom: 18px;
+    }
+
+    .user-card {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 12px;
+        margin: 8px 0 15px 0;
+    }
+
+    .user-name {
+        font-weight: 700;
+        font-size: 15px;
+    }
+
+    .user-plan {
+        color: #777;
+        font-size: 12px;
+        margin-top: 3px;
+    }
+
+    /* ---------- MAIN ---------- */
+
+    .main-header {
+        text-align: center;
+        padding: 12px 0 5px 0;
+    }
+
+    .main-header-title {
+        font-size: 28px;
+        font-weight: 800;
+    }
+
+    .main-header-sub {
+        color: #777;
+        font-size: 14px;
+    }
+
+    .welcome-box {
+        max-width: 760px;
+        margin: 50px auto 35px auto;
+        text-align: center;
+    }
+
+    .welcome-logo {
+        font-size: 60px;
+        margin-bottom: 8px;
+    }
+
+    .welcome-title {
+        font-size: 34px;
+        font-weight: 800;
+    }
+
+    .welcome-text {
+        color: #777;
+        font-size: 16px;
+    }
+
+    /* ---------- CHAT ---------- */
+
+    [data-testid="stChatMessage"] {
+        padding-top: 15px;
+        padding-bottom: 15px;
+    }
+
+    /* ---------- SETTINGS ---------- */
+
+    .settings-user {
+        background: #f7f7f8;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 12px;
+    }
+
+    /* ---------- FOOTER ---------- */
+
+    .jugnu-footer {
+        text-align: center;
+        color: #999;
+        font-size: 12px;
+        padding: 18px 0 25px 0;
+    }
+
+    /* ---------- HIDE SOME STREAMLIT SPACE ---------- */
+
+    div.block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
 # BASIC HELPERS
 # =========================================================
 
 def clean_text(text):
+
     if text is None:
         return ""
 
@@ -56,6 +189,7 @@ def clean_text(text):
 
 
 def hash_password(password):
+
     return hashlib.sha256(
         password.encode("utf-8")
     ).hexdigest()
@@ -66,11 +200,14 @@ def hash_password(password):
 # =========================================================
 
 def db():
+
     conn = sqlite3.connect(
         DB_FILE,
         check_same_thread=False
     )
+
     conn.row_factory = sqlite3.Row
+
     return conn
 
 
@@ -79,7 +216,7 @@ def init_db():
     conn = db()
     cur = conn.cursor()
 
-    # Existing user system
+    # Existing users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -89,7 +226,7 @@ def init_db():
         )
     """)
 
-    # Login / signup system
+    # Login users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS auth_users (
             username TEXT PRIMARY KEY,
@@ -157,7 +294,7 @@ def init_db():
         timespec="seconds"
     )
 
-    # Existing main user
+    # Main Arvind user
     cur.execute(
         """
         INSERT OR IGNORE INTO users
@@ -172,7 +309,7 @@ def init_db():
         )
     )
 
-    # Existing main user's settings
+    # Arvind settings
     cur.execute(
         """
         INSERT OR IGNORE INTO app_settings
@@ -182,7 +319,7 @@ def init_db():
         ("arvind",)
     )
 
-    # Create login for old Arvind account
+    # Old Arvind login
     cur.execute(
         """
         INSERT OR IGNORE INTO auth_users
@@ -208,47 +345,27 @@ init_db()
 # SESSION STATE
 # =========================================================
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+defaults = {
+    "logged_in": False,
+    "username": "",
+    "conversation_id": None,
+    "messages": [],
+    "file_text": "",
+    "file_name": "",
+    "uploaded_image": None,
+    "last_audio_hash": "",
+    "tts_cache": {},
+    "quick_prompt": "",
+    "web_search": False,
+    "pdf_mode": True,
+    "voice_call": False,
+    "auto_speak": False,
+}
 
-if "username" not in st.session_state:
-    st.session_state.username = ""
+for key, value in defaults.items():
 
-if "conversation_id" not in st.session_state:
-    st.session_state.conversation_id = None
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "file_text" not in st.session_state:
-    st.session_state.file_text = ""
-
-if "file_name" not in st.session_state:
-    st.session_state.file_name = ""
-
-if "uploaded_image" not in st.session_state:
-    st.session_state.uploaded_image = None
-
-if "last_audio_hash" not in st.session_state:
-    st.session_state.last_audio_hash = ""
-
-if "tts_cache" not in st.session_state:
-    st.session_state.tts_cache = {}
-
-if "quick_prompt" not in st.session_state:
-    st.session_state.quick_prompt = ""
-
-if "web_search" not in st.session_state:
-    st.session_state.web_search = False
-
-if "pdf_mode" not in st.session_state:
-    st.session_state.pdf_mode = True
-
-if "voice_call" not in st.session_state:
-    st.session_state.voice_call = False
-
-if "auto_speak" not in st.session_state:
-    st.session_state.auto_speak = False
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # =========================================================
@@ -274,7 +391,10 @@ def create_account(username, name, password):
         r"^[a-zA-Z0-9_.-]+$",
         username
     ):
-        return False, "Username में केवल letters, numbers, _, . और - इस्तेमाल करें।"
+        return False, (
+            "Username में केवल letters, numbers, "
+            "_, . और - इस्तेमाल करें।"
+        )
 
     conn = db()
 
@@ -363,6 +483,8 @@ def login_user(username, password):
 
         st.session_state.logged_in = True
         st.session_state.username = username
+        st.session_state.messages = []
+        st.session_state.conversation_id = None
 
         return True
 
@@ -380,52 +502,73 @@ def logout_user():
 
 
 # =========================================================
-# LOGIN PAGE DESIGN
+# CHANGE PASSWORD
+# =========================================================
+
+def change_password(old_password, new_password):
+
+    username = st.session_state.username
+
+    if username == "guest":
+        return False, "Guest account का password change नहीं किया जा सकता।"
+
+    if not old_password or not new_password:
+        return False, "पुराना और नया password दोनों भरें।"
+
+    if len(new_password) < 6:
+        return False, "नया password कम से कम 6 characters का होना चाहिए।"
+
+    conn = db()
+
+    row = conn.execute(
+        """
+        SELECT password_hash
+        FROM auth_users
+        WHERE username=?
+        """,
+        (username,)
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        return False, "User account नहीं मिला।"
+
+    if row["password_hash"] != hash_password(old_password):
+        conn.close()
+        return False, "पुराना password गलत है।"
+
+    conn.execute(
+        """
+        UPDATE auth_users
+        SET password_hash=?
+        WHERE username=?
+        """,
+        (
+            hash_password(new_password),
+            username
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    return True, "Password successfully change हो गया।"
+
+
+# =========================================================
+# LOGIN PAGE
 # =========================================================
 
 def show_login_screen():
 
     st.markdown(
-        """
-        <style>
-
-        .main-title {
-            text-align:center;
-            font-size:48px;
-            font-weight:800;
-            margin-top:40px;
-        }
-
-        .sub-title {
-            text-align:center;
-            color:#777;
-            font-size:18px;
-            margin-bottom:30px;
-        }
-
-        .logo {
-            text-align:center;
-            font-size:70px;
-            margin-top:30px;
-        }
-
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="logo">✨</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="main-title">जुगनू AI</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="sub-title">आपका Personal Smart AI Assistant</div>',
+        '<div class="welcome-box">'
+        '<div class="welcome-logo">✨</div>'
+        '<div class="welcome-title">जुगनू AI</div>'
+        '<div class="welcome-text">'
+        'आपका Personal Smart AI Assistant'
+        '</div>'
+        '</div>',
         unsafe_allow_html=True
     )
 
@@ -443,10 +586,7 @@ def show_login_screen():
             ]
         )
 
-        # -------------------------------------------------
         # LOGIN
-        # -------------------------------------------------
-
         with tab_login:
 
             st.markdown(
@@ -496,14 +636,11 @@ def show_login_screen():
                     )
 
             st.caption(
-                "पुराने Arvind account के लिए पहली बार: "
+                "पुराने Arvind account के लिए: "
                 "arvind / Jugnu@123"
             )
 
-        # -------------------------------------------------
         # SIGNUP
-        # -------------------------------------------------
-
         with tab_signup:
 
             st.markdown(
@@ -566,10 +703,7 @@ def show_login_screen():
 
                         st.error(message)
 
-        # -------------------------------------------------
         # GUEST
-        # -------------------------------------------------
-
         with tab_guest:
 
             st.markdown(
@@ -619,6 +753,8 @@ def show_login_screen():
 
                 st.session_state.logged_in = True
                 st.session_state.username = "guest"
+                st.session_state.messages = []
+                st.session_state.conversation_id = None
 
                 st.rerun()
 
@@ -635,7 +771,7 @@ if not st.session_state.logged_in:
 
 
 # =========================================================
-# USER DATABASE FUNCTIONS
+# USER DATABASE
 # =========================================================
 
 def current_user():
@@ -646,6 +782,24 @@ def current_user():
         """
         SELECT *
         FROM users
+        WHERE username=?
+        """,
+        (st.session_state.username,)
+    ).fetchone()
+
+    conn.close()
+
+    return row
+
+
+def get_auth_user():
+
+    conn = db()
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM auth_users
         WHERE username=?
         """,
         (st.session_state.username,)
@@ -743,7 +897,6 @@ def create_conversation(title="नई चैट"):
 def ensure_conversation(title="नई चैट"):
 
     if not st.session_state.conversation_id:
-
         return create_conversation(title)
 
     return st.session_state.conversation_id
@@ -872,6 +1025,48 @@ def get_conversations(search=""):
     conn.close()
 
     return rows
+
+
+# =========================================================
+# DELETE CURRENT CHAT
+# =========================================================
+
+def delete_current_chat():
+
+    cid = st.session_state.conversation_id
+
+    if not cid:
+        return False
+
+    conn = db()
+
+    conn.execute(
+        """
+        DELETE FROM messages
+        WHERE conversation_id=?
+        """,
+        (cid,)
+    )
+
+    conn.execute(
+        """
+        DELETE FROM conversations
+        WHERE id=?
+        AND username=?
+        """,
+        (
+            cid,
+            st.session_state.username
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    st.session_state.conversation_id = None
+    st.session_state.messages = []
+
+    return True
 
 
 # =========================================================
@@ -1356,19 +1551,25 @@ def build_system_prompt(
     )
 
     return f"""
-तुम जुगनू AI हो, अरविंद सिंह के personal smart companion हो।
+तुम जुगनू AI हो।
+
+जुगनू AI के निर्माता अरविंद सिंह हैं।
+उनके पिता का नाम Mr Rewant Singh है।
+उनका गाँव Doojasar है।
+वे वर्तमान में Shri Mohangarh में रहते हैं।
 
 भाषा preference: {lang}
 
 Bot mode:
 {mode_text}
 
-अरविंद के बारे में उपलब्ध memory:
+User की उपलब्ध memory:
 {memory_text if memory_text else "- अभी कोई memory नहीं है।"}
 
 नियम:
 
 - तथ्य नहीं गढ़ना।
+- यदि user जुगनू AI के निर्माता के बारे में पूछे तो ऊपर दी गई creator information बताओ।
 - यदि live/current जानकारी चाहिए और web context दिया गया है तो उसी को प्राथमिकता दो।
 - web context में स्रोत हों तो उत्तर के अंत में छोटे 'स्रोत' सेक्शन में URLs दो।
 - PDF/document context दिया हो तो उसी के आधार पर उत्तर दो और page number बताओ जहाँ संभव हो।
@@ -1496,15 +1697,28 @@ def creator_answer(text):
 
     t = text.lower()
 
-    if (
-        "निर्माता" in t
-        or "creator" in t
-        or "किसने बनाया" in t
+    creator_words = [
+        "निर्माता",
+        "creator",
+        "किसने बनाया",
+        "किसने बनाया है",
+        "किसने बनाया?",
+        "बनाने वाला",
+        "बनाया किसने",
+        "owner of jugnu",
+        "developer of jugnu"
+    ]
+
+    if any(
+        word in t
+        for word in creator_words
     ):
 
         return (
-            "जुगनू AI के निर्माता अरविंद सिंह हैं। "
-            "उनका संबंध गाँव दूजासर, श्री मोहनगढ़ से है।"
+            "✨ जुगनू AI के निर्माता अरविंद सिंह हैं।\n\n"
+            "उनके पिता का नाम **Mr Rewant Singh** है।\n"
+            "उनका गाँव **Doojasar** है और वे वर्तमान में "
+            "**Shri Mohangarh** में रहते हैं।"
         )
 
     return None
@@ -1619,6 +1833,7 @@ def process_prompt(
         answer = image_placeholder_message(
             prompt
         )
+
         results = []
 
     else:
@@ -1748,7 +1963,7 @@ def quick_buttons():
 # =========================================================
 
 user = current_user()
-
+auth_user = get_auth_user()
 settings = load_settings()
 
 
@@ -1759,19 +1974,31 @@ settings = load_settings()
 with st.sidebar:
 
     st.markdown(
-        "## ✨ जुगनू AI"
+        '<div class="jugnu-logo">✨ जुगनू AI</div>',
+        unsafe_allow_html=True
     )
 
     st.markdown(
-        f"""
-        **👤 {user['name']}**
-        
-        👑 Plan: **{user['plan']}**
-        """
+        '<div class="jugnu-subtitle">'
+        'Personal Smart AI Assistant'
+        '</div>',
+        unsafe_allow_html=True
     )
 
+    # USER CARD
+    st.markdown(
+        f"""
+        <div class="user-card">
+            <div class="user-name">👤 {user['name']}</div>
+            <div class="user-plan">👑 {user['plan']}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # NEW CHAT
     if st.button(
-        "➕ नई चैट",
+        "✏️  नई चैट",
         use_container_width=True
     ):
 
@@ -1779,6 +2006,9 @@ with st.sidebar:
 
         st.rerun()
 
+    st.divider()
+
+    # MAIN TOGGLES
     st.toggle(
         "📞 Voice Call Mode",
         key="voice_call"
@@ -1801,14 +2031,28 @@ with st.sidebar:
 
     st.divider()
 
-    # -----------------------------------------------------
+    # =====================================================
     # SETTINGS
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.expander(
         "⚙️ Settings",
         expanded=False
     ):
+
+        # USER NAME
+        st.markdown(
+            f"""
+            <div class="settings-user">
+                <b>👤 {user['name']}</b><br>
+                <small>@{st.session_state.username}</small><br>
+                <small>Plan: {user['plan']}</small>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown("#### 🎛️ AI Settings")
 
         language = st.selectbox(
             "भाषा",
@@ -1833,7 +2077,8 @@ with st.sidebar:
                     "Hindi + English"
                 ]
             )
-            else 0
+            else 0,
+            key="settings_language"
         )
 
         bot_mode = st.selectbox(
@@ -1862,7 +2107,8 @@ with st.sidebar:
                     "मारवाड़ी / राजस्थानी"
                 ]
             )
-            else 0
+            else 0,
+            key="settings_bot_mode"
         )
 
         voice_speed = st.selectbox(
@@ -1885,11 +2131,13 @@ with st.sidebar:
                     "धीमी"
                 ]
             )
-            else 0
+            else 0,
+            key="settings_voice_speed"
         )
 
         if st.button(
-            "💾 Settings Save"
+            "💾 Settings Save",
+            use_container_width=True
         ):
 
             save_setting(
@@ -1911,9 +2159,104 @@ with st.sidebar:
                 "Settings saved"
             )
 
-    # -----------------------------------------------------
+        st.divider()
+
+        # =================================================
+        # DELETE CHAT
+        # =================================================
+
+        st.markdown(
+            "#### 🗑️ Chat"
+        )
+
+        if st.session_state.conversation_id:
+
+            if st.button(
+                "🗑️ Delete Current Chat",
+                use_container_width=True
+            ):
+
+                deleted = delete_current_chat()
+
+                if deleted:
+
+                    st.success(
+                        "Current chat delete हो गई।"
+                    )
+
+                    st.rerun()
+
+        else:
+
+            st.caption(
+                "अभी कोई current chat नहीं है।"
+            )
+
+        st.divider()
+
+        # =================================================
+        # CHANGE PASSWORD
+        # =================================================
+
+        st.markdown(
+            "#### 🔐 Password"
+        )
+
+        if st.session_state.username == "guest":
+
+            st.info(
+                "Guest account में password नहीं होता।"
+            )
+
+        else:
+
+            old_password = st.text_input(
+                "Current Password",
+                type="password",
+                key="old_password"
+            )
+
+            new_password = st.text_input(
+                "New Password",
+                type="password",
+                key="new_password"
+            )
+
+            confirm_new_password = st.text_input(
+                "Confirm New Password",
+                type="password",
+                key="confirm_new_password"
+            )
+
+            if st.button(
+                "🔐 Change Password",
+                use_container_width=True
+            ):
+
+                if new_password != confirm_new_password:
+
+                    st.error(
+                        "दोनों नए passwords समान होने चाहिए।"
+                    )
+
+                else:
+
+                    ok, message = change_password(
+                        old_password,
+                        new_password
+                    )
+
+                    if ok:
+
+                        st.success(message)
+
+                    else:
+
+                        st.error(message)
+
+    # =====================================================
     # MEMORY
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.expander(
         "🧠 Memory Bank",
@@ -1921,11 +2264,15 @@ with st.sidebar:
     ):
 
         mem_text = st.text_input(
-            "नई memory"
+            "नई memory",
+            key="memory_text"
         )
 
         if (
-            st.button("➕ Memory Save")
+            st.button(
+                "➕ Memory Save",
+                key="save_memory"
+            )
             and mem_text.strip()
         ):
 
@@ -1960,9 +2307,9 @@ with st.sidebar:
 
                 st.rerun()
 
-    # -----------------------------------------------------
+    # =====================================================
     # REMINDER
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.expander(
         "⏰ Smart Reminder / Diary",
@@ -1970,16 +2317,19 @@ with st.sidebar:
     ):
 
         task = st.text_input(
-            "Task"
+            "Task",
+            key="reminder_task"
         )
 
         remind = st.text_input(
             "Time / Date",
-            placeholder="जैसे 2026-10-05 18:00"
+            placeholder="जैसे 2026-10-05 18:00",
+            key="reminder_time"
         )
 
         if st.button(
-            "➕ Save Reminder"
+            "➕ Save Reminder",
+            key="save_reminder"
         ):
 
             add_note(
@@ -2015,9 +2365,9 @@ with st.sidebar:
 
                 st.rerun()
 
-    # -----------------------------------------------------
+    # =====================================================
     # CHAT HISTORY
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.expander(
         "🔎 Chat Search / History",
@@ -2025,12 +2375,21 @@ with st.sidebar:
     ):
 
         search = st.text_input(
-            "Chat search"
+            "Chat search",
+            key="chat_search"
         )
 
-        for conv in get_conversations(
+        conversations = get_conversations(
             search
-        )[:20]:
+        )
+
+        if not conversations:
+
+            st.caption(
+                "अभी कोई पुरानी chat नहीं है।"
+            )
+
+        for conv in conversations[:20]:
 
             title = (
                 conv["title"]
@@ -2049,9 +2408,9 @@ with st.sidebar:
 
                 st.rerun()
 
-    # -----------------------------------------------------
+    # =====================================================
     # VIP
-    # -----------------------------------------------------
+    # =====================================================
 
     with st.expander(
         "👑 VIP Dashboard",
@@ -2074,8 +2433,9 @@ with st.sidebar:
 
     st.divider()
 
+    # LOGOUT
     if st.button(
-        "🚪 लॉगआउट",
+        "🚪 Logout",
         use_container_width=True
     ):
 
@@ -2083,17 +2443,47 @@ with st.sidebar:
 
 
 # =========================================================
-# MAIN CHAT INTERFACE
+# MAIN HEADER
 # =========================================================
 
-st.title(
-    "✨ जुगनू AI"
+st.markdown(
+    f"""
+    <div class="main-header">
+        <div class="main-header-title">✨ जुगनू AI</div>
+        <div class="main-header-sub">
+            {user['name']} • आपका Personal Smart AI Assistant
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
 )
 
-st.caption(
-    f"{user['name']} | पर्सनल स्मार्ट साथी"
-)
 
+# =========================================================
+# WELCOME MESSAGE
+# =========================================================
+
+if not st.session_state.messages:
+
+    st.markdown(
+        f"""
+        <div class="welcome-box">
+            <div class="welcome-logo">✨</div>
+            <div class="welcome-title">
+                नमस्ते, {user['name']} 👋
+            </div>
+            <div class="welcome-text">
+                मैं जुगनू AI हूँ। आज मैं आपकी किस तरह मदद करूँ?
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# =========================================================
+# VOICE CALL INFO
+# =========================================================
 
 if st.session_state.voice_call:
 
@@ -2132,17 +2522,13 @@ if "pending_audio" in st.session_state:
     del st.session_state.pending_audio
 
 
-st.divider()
-
-
-st.markdown(
-    "### 🧰 नीचे से बोलें, file लगाएँ या quick action चुनें"
-)
-
-
 # =========================================================
 # FILE / VOICE / IMAGE
 # =========================================================
+
+st.markdown(
+    "### 🧰 Tools"
+)
 
 tool1, tool2, tool3 = st.columns(
     [1, 1, 1]
@@ -2326,9 +2712,12 @@ if final_prompt:
 # FOOTER
 # =========================================================
 
-st.markdown("---")
-
-st.caption(
-    "जुगनू AI • Groq GPT-OSS • Whisper Voice • "
-    "SQLite Memory • PDF Reader • Web Search"
+st.markdown(
+    """
+    <div class="jugnu-footer">
+        ✨ जुगनू AI • Groq GPT-OSS • Whisper Voice •
+        SQLite Memory • PDF Reader • Web Search
+    </div>
+    """,
+    unsafe_allow_html=True
 )
