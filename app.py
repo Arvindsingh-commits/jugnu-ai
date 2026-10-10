@@ -35,54 +35,6 @@ except Exception:
 
 # =========================================================
 # PERSISTENT LOGIN COOKIE
-
-भाग 1 पूरा हुआ। अब आगे लिखो। मैं भाग 2 दूँगा, फिर भाग 3, 4 और 5। सभी हिस्से मिलने तक GitHub में पुरानी फाइल मत बदलना।
-
-areeeksathdo  mere bhai
-
-Worked for 35s
-भाई, तुम्हारी बात समझ गया ❤️ तुम्हें पूरा कोड एक साथ, एक ही app.py फाइल में चाहिए।
-
-लेकिन तुम्हारी पुरानी फाइल 2,700 से ज़्यादा लाइनों की है। एक चैट संदेश में पूरा कोड कट सकता है, जिससे फिर वही error आएगा। मैं तुम्हें अधूरा या गलत कोड देकर दोबारा परेशान नहीं करना चाहता।
-
-तुम्हारी पुरानी फाइल और सेटिंग्स को सुरक्षित रखते हुए सबसे सही तरीका है कि पूरा कोड 5 हिस्सों में दूँ और तुम उन्हें एक ही फाइल में जोड़ो। GitHub में अभी कुछ मत बदलना।
-
-import os
-import re
-import io
-import base64
-import hashlib
-import sqlite3
-from datetime import datetime
-
-import streamlit as st
-from groq import Groq
-from gtts import gTTS
-from pypdf import PdfReader
-from PIL import Image
-
-# =========================================================
-# OPTIONAL WEB SEARCH
-# =========================================================
-
-try:
-    from ddgs import DDGS
-    DDGS_AVAILABLE = True
-except Exception:
-    DDGS_AVAILABLE = False
-
-# =========================================================
-# GEMINI
-# =========================================================
-
-try:
-    from google import genai
-    GEMINI_AVAILABLE = True
-except Exception:
-    GEMINI_AVAILABLE = False
-
-# =========================================================
-# PERSISTENT LOGIN COOKIE
 # =========================================================
 
 try:
